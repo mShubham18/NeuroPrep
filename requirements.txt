@@ -4,3 +4,9 @@ numpy
 matplotlib
 seaborn
 scikit-learn
+google-generativeai 
+pdfplumber 
+python-docx 
+flask 
+werkzeug
+dotenv
