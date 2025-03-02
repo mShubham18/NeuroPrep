@@ -1,8 +1,8 @@
 from components.model_configuration import model_config
-from components.parse_resume import parse_to_text
+#from components.parse_resume import parse_to_text
+from utils.main_utils import metrics_titles
 model = model_config()
-def extract_metrics(path:str)->dict:
-    resume_content=parse_to_text(path)
+def extract_metrics(resume_content:str)->dict:
     prompt = f"""I am creating a web app platform that fetches user resumes and provides a mock interview consisting of Aptitude & Reasoning, Technical, and HR rounds. I need you to generate detailed insights that I can feed into an LLM to create question content for the exam.
 
     Provide structured insights such as experience level, test difficulty, skill set, and other relevant factors that will help structure the exam. Be as detailed and numeric as possible (e.g., use "5/10" instead of "five out of ten").
@@ -40,30 +40,7 @@ def extract_metrics(path:str)->dict:
     Here is the resume content: {resume_content}"""
     response = model.generate_content(prompt)
     metrics_info=list((response.text).split("||"))
-    metrics_titles = [
-    "difficulty",
-    "experience",
-    "skillset",
-    "aptitude_focus",
-    "technical_focus",
-    "hr_focus",
-    "experience_level_categorization",
-    "technical_skill_emphasis",
-    "domain_knowledge_emphasis",
-    "aptitude_test_skill_split",
-    "technical_test_skill_split",
-    "question_format_diversity",
-    "skill_proficiency_levels",
-    "skill_importance_weights",
-    "contextual_question_scenarios",
-    "test_time_allocation",
-    "code_writing_emphasis",
-    "programming_language_prioritization",
-    "hr_round_focus_areas",
-    "behavioral_competencies_tested",
-    "situational_judgment_scenarios"
-    ]
 
-    metrics_dict = {title:metric for title,metric in zip(metrics_titles,metrics_info)}
+    metrics_dict = {title:metric.split("\n")[0] for title,metric in zip(metrics_titles,metrics_info)}
     return metrics_dict
 

@@ -1,0 +1,23 @@
+metrics_titles = [
+    "difficulty",
+    "experience",
+    "skillset",
+    "aptitude_focus",
+    "technical_focus",
+    "hr_focus",
+    "experience_level_categorization",
+    "technical_skill_emphasis",
+    "domain_knowledge_emphasis",
+    "aptitude_test_skill_split",
+    "technical_test_skill_split",
+    "question_format_diversity",
+    "skill_proficiency_levels",
+    "skill_importance_weights",
+    "contextual_question_scenarios",
+    "test_time_allocation",
+    "code_writing_emphasis",
+    "programming_language_prioritization",
+    "hr_round_focus_areas",
+    "behavioral_competencies_tested",
+    "situational_judgment_scenarios"
+    ]
