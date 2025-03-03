@@ -1,5 +1,26 @@
 from components.model_configuration import model_config
 import markdown
+
+def generate_Introduction(metrics_dict:dict)->list:
+    prompt = f"""I am creating a web app platform that fetches user resumes and provides a mock interview consisting of Aptitude & Reasoning, Technical, and HR rounds. I have some detailed metrics that can be used to create question content for the exam.
+
+    I'll be providing the metrics to you in the form of dictionary The metrics contain the information that you could use to create the question like difficulty, skills and all. it consits of many other metrics too so only use those metrics that are needed for questions related to Introduction. round. as I have total 4 rounds like: Introduction, Aptitude, Technical,Coding, and Hr round
+    what i need in return is a list of 5-7 Introduction round questions, comma seperated and seprated by "||". they should be basically to greet the user, make him comfortable and prepared for the exam.
+    The name of the job seeker is ramesh.
+    start with greeting like hello how are you
+    Always assume this is a real interview so dont talk about things like how do you like this mock interview
+    since this is just a introduction round, do not talk about deeep technical stuff as it will later on be explain
+
+    do not include any unncessary clutter like explaination and salutation
+    keep the questions progessive asumming you have got your respinse to the qeustions
+
+    {metrics_dict}"""
+    model = model_config()
+    response = model.generate_content(prompt)
+    questions_list = (response.text).split("||")
+    questions_list = [question.replace("\n","") for question in questions_list]
+    return questions_list
+
 def generate_Aptitude(metrics_dict:dict)->dict:
     prompt = f"""I am creating a web app platform that fetches user resumes and provides a mock interview consisting of Aptitude & Reasoning, Technical, and HR rounds. I have some detailed metrics that can be used to create question content for the exam.
 
