@@ -1,0 +1,67 @@
+<script>
+    let userName = "Candidate";
+    let roundType = "introduction";
+
+    async function startVoiceInteraction() {
+        console.log("🔹 Voice interaction started...");
+
+        const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+        recognition.continuous = false;
+        recognition.lang = "en-US";
+
+        function speak(text) {
+            console.log("🔹 Speaking:", text);
+
+            const utterance = new SpeechSynthesisUtterance(text);
+            speechSynthesis.speak(utterance);
+
+            utterance.onend = () => {
+                console.log("🔹 Finished speaking, waiting for response...");
+                recognition.start();
+            };
+        }
+
+        async function askQuestion() {
+            console.log("🔹 Fetching AI response...");
+            
+            try {
+                const aiResponse = await fetch("/ai-response", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ user: userName, round: roundType }),
+                });
+
+                const data = await aiResponse.json();
+                console.log("🔹 AI Response:", data);
+
+                if (data.reply) {
+                    speak(data.reply);
+                }
+
+                if (data.reply.includes("Please proceed")) {
+                    alert("Round finished!");
+                    return;
+                }
+            } catch (error) {
+                console.error("❌ Error fetching AI response:", error);
+            }
+        }
+
+        recognition.onresult = async function (event) {
+            let userResponse = event.results[0][0].transcript;
+            console.log("🎤 User said:", userResponse);
+            askQuestion();
+        };
+
+        recognition.onerror = function (event) {
+            console.error("❌ Speech recognition error:", event.error);
+        };
+
+        askQuestion();
+    }
+
+    window.onload = function () {
+        console.log("🔹 Page loaded. Starting interaction...");
+        startVoiceInteraction();
+    };
+</script>

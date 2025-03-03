@@ -20,7 +20,7 @@ def extract_text_from_docx(docx_path):
     doc = docx.Document(docx_path)
     return "\n".join([para.text for para in doc.paragraphs]).strip()
 
-def parse_to_text(path):
+def parse_to_text(path:str):
     if path[-3:]=="pdf":
         resume_text = extract_text_from_pdf(path)
     if path[-3:]=="doc":
