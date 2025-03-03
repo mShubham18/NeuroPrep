@@ -6,6 +6,7 @@ from datetime import datetime
 import sqlite3
 from threading import Thread
 import time
+import os
 from utils import TryExcept
 
 class ProctorService:
@@ -24,14 +25,29 @@ class ProctorService:
         )
         
         # Load YOLOv5 model for phone detection
-        with TryExcept('Error loading YOLOv5 model'):
-            try:
-                import yolov5
-                self.phone_detector = yolov5.load('yolov5s')
-                self.phone_detector.classes = [67]  # Class index for cell phones
-            except ImportError:
-                print("YOLOv5 not installed. Phone detection will be disabled.")
-                self.phone_detector = None
+        try:
+            import yolov5
+            # Create models directory if it doesn't exist
+            if not os.path.exists('models'):
+                os.makedirs('models')
+            
+            # Download YOLOv5s if not exists
+            model_path = 'models/yolov5s.pt'
+            if not os.path.exists(model_path):
+                print("Downloading YOLOv5s model...")
+                torch.hub.download_url_to_file(
+                    'https://github.com/ultralytics/yolov5/releases/download/v6.1/yolov5s.pt',
+                    model_path
+                )
+            
+            # Load the model
+            self.phone_detector = yolov5.load(model_path)
+            self.phone_detector.classes = [67]  # Class index for cell phones
+            print("YOLOv5 model loaded successfully")
+        except Exception as e:
+            print(f"Error loading YOLOv5 model: {str(e)}")
+            print("Phone detection will be disabled")
+            self.phone_detector = None
         
         # Initialize eye tracking parameters
         self.eye_threshold = 0.3

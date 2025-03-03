@@ -86,6 +86,30 @@
         .retry-button:hover {
             background-color: #2980b9;
         }
+        #progress-log {
+            text-align: left;
+            margin: 20px auto;
+            padding: 15px;
+            background-color: #f8f9fa;
+            border-radius: 5px;
+            max-height: 200px;
+            overflow-y: auto;
+            font-family: monospace;
+        }
+        .log-entry {
+            margin: 5px 0;
+            padding: 5px;
+            border-radius: 3px;
+        }
+        .log-entry.success {
+            color: #28a745;
+        }
+        .log-entry.info {
+            color: #17a2b8;
+        }
+        .log-entry.error {
+            color: #dc3545;
+        }
     </style>
 </head>
 <body>
@@ -98,114 +122,247 @@
         </div>
         
         <div class="progress-bar">
-            <div class="progress-bar-fill" id="progress-bar"></div>
-        </div>
-        
-        <div class="status-message" id="status-message">
-            Initializing interview session...
+            <div class="progress-bar-fill" id="progress-bar-fill"></div>
         </div>
 
-        <div class="error-message" id="error-message">
-            An error occurred while preparing your interview.
-        </div>
+        <div id="progress-log"></div>
         
-        <button class="retry-button" id="retry-button" onclick="startGeneration()">
-            Retry
-        </button>
+        <div class="error-message" id="error-message"></div>
+        <button class="retry-button" id="retry-button" onclick="retryGeneration()">Retry Generation</button>
     </div>
 
     <script>
-        const statusMessages = [
-            "Analyzing your resume...",
-            "Generating personalized questions...",
-            "Preparing interview rounds...",
-            "Setting up your session...",
-            "Almost ready..."
-        ];
-        
-        let currentMessageIndex = 0;
+        let progressBar = document.getElementById('progress-bar-fill');
+        let progressLog = document.getElementById('progress-log');
+        let errorMessage = document.getElementById('error-message');
+        let retryButton = document.getElementById('retry-button');
         let progress = 0;
-        let messageInterval;
-        let progressInterval;
-        
-        function updateStatusMessage() {
-            const statusElement = document.getElementById('status-message');
-            currentMessageIndex = (currentMessageIndex + 1) % statusMessages.length;
-            statusElement.textContent = statusMessages[currentMessageIndex];
+        let eventSource = null;
+        let reconnectAttempts = 0;
+        const MAX_RECONNECT_ATTEMPTS = 5;
+        const RECONNECT_DELAY = 1000; // Start with 1 second
+        let isGenerating = false;
+
+        function updateProgress(message, type = 'info') {
+            console.log('Progress update:', message); // Debug log
+
+            // Always show the message in the progress log first
+            const logEntry = document.createElement('div');
+            logEntry.className = `log-entry ${type}`;
+            logEntry.textContent = message;
+            progressLog.appendChild(logEntry);
+            progressLog.scrollTop = progressLog.scrollHeight;
+
+            if (message === 'heartbeat') {
+                return; // Ignore heartbeat messages
+            }
+
+            // Check for special messages
+            if (message.startsWith('REDIRECT:')) {
+                const redirectUrl = message.split(':')[1];
+                console.log('Redirecting to:', redirectUrl); // Debug log
+                
+                // Verify questions were generated before redirecting
+                fetch('/get-technical-questions')
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            closeEventSource();
+                            window.location.href = redirectUrl;
+                        } else {
+                            throw new Error('Questions not fully generated yet');
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Verification error:', error); // Debug log
+                        showError('Failed to verify questions. Please try again.');
+                    });
+                return;
+            }
+            
+            if (message.startsWith('ERROR:')) {
+                showError(message.substring(6));
+                return;
+            }
+
+            // Update progress bar based on message
+            if (message.includes('extraction Initiated')) {
+                progress = 5;
+            } else if (message.includes('extraction Completed')) {
+                progress = 10;
+            } else if (message.includes('Initiating Question Generation')) {
+                progress = 15;
+            } else if (message.includes('Introduction questions generation completed')) {
+                progress = 30;
+            } else if (message.includes('Aptitude questions generation completed')) {
+                progress = 45;
+            } else if (message.includes('Technical questions generation completed')) {
+                progress = 60;
+            } else if (message.includes('Coding questions generation completed')) {
+                progress = 75;
+            } else if (message.includes('HR questions generation completed')) {
+                progress = 95;
+            } else if (message.includes('All questions generated successfully')) {
+                progress = 100;
+            }
+            progressBar.style.width = `${progress}%`;
         }
-        
-        function updateProgress() {
-            const progressBar = document.getElementById('progress-bar');
-            if (progress < 90) {  // Only auto-progress to 90%
-                progress += 1;
-                progressBar.style.width = `${progress}%`;
+
+        function showError(error) {
+            console.error('Error:', error); // Debug log
+            isGenerating = false;
+            errorMessage.style.display = 'block';
+            errorMessage.textContent = error;
+            retryButton.style.display = 'block';
+            document.querySelector('.loading-spinner').style.display = 'none';
+            
+            const logEntry = document.createElement('div');
+            logEntry.className = 'log-entry error';
+            logEntry.textContent = `Error: ${error}`;
+            progressLog.appendChild(logEntry);
+            progressLog.scrollTop = progressLog.scrollHeight;
+
+            closeEventSource();
+        }
+
+        function hideError() {
+            errorMessage.style.display = 'none';
+            retryButton.style.display = 'none';
+        }
+
+        function closeEventSource() {
+            if (eventSource) {
+                console.log('Closing EventSource connection'); // Debug log
+                eventSource.close();
+                eventSource = null;
             }
         }
-        
-        function showError(message) {
-            const errorElement = document.getElementById('error-message');
-            const retryButton = document.getElementById('retry-button');
-            const loadingSpinner = document.querySelector('.loading-spinner');
-            const progressBar = document.querySelector('.progress-bar');
+
+        function retryGeneration() {
+            if (isGenerating) return;
             
-            errorElement.style.display = 'block';
-            errorElement.textContent = message;
-            retryButton.style.display = 'block';
-            loadingSpinner.style.display = 'none';
-            progressBar.style.display = 'none';
-            
-            clearInterval(messageInterval);
-            clearInterval(progressInterval);
-        }
-        
-        function startGeneration() {
-            // Reset UI
-            const errorElement = document.getElementById('error-message');
-            const retryButton = document.getElementById('retry-button');
-            const loadingSpinner = document.querySelector('.loading-spinner');
-            const progressBar = document.querySelector('.progress-bar');
-            
-            errorElement.style.display = 'none';
+            errorMessage.style.display = 'none';
             retryButton.style.display = 'none';
-            loadingSpinner.style.display = 'block';
-            progressBar.style.display = 'block';
-            
-            // Reset progress
+            document.querySelector('.loading-spinner').style.display = 'block';
+            progressBar.style.width = '0%';
             progress = 0;
-            document.getElementById('progress-bar').style.width = '0%';
+            progressLog.innerHTML = '';
+            reconnectAttempts = 0;
+
+            closeEventSource();
+            setupEventSource();
+            generateQuestions();
+        }
+
+        function generateQuestions() {
+            if (isGenerating) {
+                console.log('Already generating questions, ignoring request'); // Debug log
+                return;
+            }
             
-            // Start intervals
-            messageInterval = setInterval(updateStatusMessage, 3000);
-            progressInterval = setInterval(updateProgress, 300);
+            console.log('Starting question generation'); // Debug log
+            isGenerating = true;
+            hideError();
+            document.querySelector('.loading-spinner').style.display = 'block';
             
-            // Make the API call
             fetch('/generate-questions')
                 .then(response => response.json())
                 .then(data => {
-                    if (data.success) {
-                        // Set progress to 100% before redirecting
-                        document.getElementById('progress-bar').style.width = '100%';
-                        document.getElementById('status-message').textContent = "Interview prepared successfully!";
-                        
-                        // Clear intervals
-                        clearInterval(messageInterval);
-                        clearInterval(progressInterval);
-                        
-                        // Redirect after a short delay to show 100% completion
-                        setTimeout(() => {
-                            window.location.href = data.redirect;
-                        }, 1000);
-                    } else {
-                        throw new Error(data.error || 'Failed to generate questions');
+                    console.log('Generate questions response:', data); // Debug log
+                    if (!data.success) {
+                        throw new Error(data.error || 'Failed to start question generation');
                     }
+                    updateProgress('Starting question generation...', 'info');
                 })
                 .catch(error => {
-                    showError(error.message || 'An error occurred while preparing your interview.');
+                    console.error('Generation error:', error); // Debug log
+                    isGenerating = false;
+                    showError(error.message || 'An error occurred while generating questions. Please try again.');
                 });
         }
 
-        // Start the process when page loads
-        window.onload = startGeneration;
+        function setupEventSource() {
+            closeEventSource();
+            
+            console.log('Setting up new EventSource connection'); // Debug log
+            eventSource = new EventSource('/progress-stream');
+            
+            eventSource.onmessage = function(event) {
+                console.log('Received message:', event.data); // Debug log
+                
+                if (event.data === 'heartbeat') {
+                    console.log('Received heartbeat'); // Debug log
+                    return;
+                }
+                
+                if (event.data.startsWith('ERROR:')) {
+                    const errorMessage = event.data.substring(6);
+                    showError(errorMessage);
+                    closeEventSource();
+                    return;
+                }
+                
+                if (event.data.startsWith('REDIRECT:')) {
+                    const redirectUrl = event.data.substring(9);
+                    console.log('Redirecting to:', redirectUrl); // Debug log
+                    closeEventSource();
+                    window.location.href = redirectUrl;
+                    return;
+                }
+                
+                hideError();
+                updateProgress(event.data);
+            };
+            
+            eventSource.onerror = function(error) {
+                console.error('EventSource error:', error); // Debug log
+                
+                if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+                    showError('Lost connection to server. Please try again.');
+                    closeEventSource();
+                    isGenerating = false;
+                    return;
+                }
+                
+                reconnectAttempts++;
+                const delay = RECONNECT_DELAY * Math.pow(2, reconnectAttempts - 1);
+                console.log(`Attempting to reconnect in ${delay}ms (attempt ${reconnectAttempts})`); // Debug log
+                
+                setTimeout(() => {
+                    if (isGenerating) { // Only reconnect if we're still generating
+                        setupEventSource();
+                    }
+                }, delay);
+            };
+            
+            eventSource.onopen = function() {
+                console.log('EventSource connection opened'); // Debug log
+                reconnectAttempts = 0; // Reset reconnect attempts on successful connection
+            };
+        }
+
+        // Start everything when page loads
+        window.addEventListener('load', function() {
+            console.log('Page loaded, starting setup'); // Debug log
+            // Reset all states
+            progress = 0;
+            progressBar.style.width = '0%';
+            progressLog.innerHTML = '';
+            isGenerating = false;
+            reconnectAttempts = 0;
+            hideError();
+            
+            // Start the process
+            setupEventSource();
+            generateQuestions();
+        });
+
+        // Clean up when leaving the page
+        window.addEventListener('beforeunload', function() {
+            console.log('Page unloading, cleaning up'); // Debug log
+            isGenerating = false;
+            closeEventSource();
+        });
     </script>
 </body>
 </html> 

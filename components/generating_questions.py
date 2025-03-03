@@ -125,41 +125,46 @@ def generate_Technical(metrics_dict:dict)->dict:
             continue
     return technical_questions_dict
 
-def generate_Coding(metrics_dict:dict)->str:
-    prompt = f"""You are an AI generating a coding question in LeetCode format.
+def generate_Coding(metrics_dict:dict)->list:
+    questions = []
+    for i in range(3):  # Generate 3 questions
+        prompt = f"""You are an AI generating a coding question in LeetCode format.
 
-    ### STRICT OUTPUT FORMAT:
-    1. Question must be in Markdown format
-    2. Include: Title, Difficulty, Problem Statement, Examples, Constraints
-    3. NO solutions, NO hints, NO explanations
-    4. NO comments or additional formatting
+        ### STRICT OUTPUT FORMAT:
+        1. Question must be in Markdown format
+        2. Include: Title, Difficulty, Problem Statement, Examples, Constraints
+        3. NO solutions, NO hints, NO explanations
+        4. NO comments or additional formatting
+        5. Make sure difficulty increases with each question
+        6. Focus on algorithms and data structures
 
-    ### EXAMPLE FORMAT:
-    # Two Sum
-    **Difficulty**: Easy
+        ### EXAMPLE FORMAT:
+        # Two Sum
+        **Difficulty**: {'Easy' if i == 0 else 'Medium' if i == 1 else 'Hard'}
 
-    Given an array of integers nums and an integer target, return indices of the two numbers such that they add up to target.
+        Given an array of integers nums and an integer target, return indices of the two numbers such that they add up to target.
 
-    **Examples:**
-    Input: nums = [2,7,11,15], target = 9
-    Output: [0,1]
-    Explanation: Because nums[0] + nums[1] == 9, we return [0, 1]
+        **Examples:**
+        Input: nums = [2,7,11,15], target = 9
+        Output: [0,1]
+        Explanation: Because nums[0] + nums[1] == 9, we return [0, 1]
 
-    **Constraints:**
-    - 2 <= nums.length <= 104
-    - -109 <= nums[i] <= 109
-    - -109 <= target <= 109
+        **Constraints:**
+        - 2 <= nums.length <= 104
+        - -109 <= nums[i] <= 109
+        - -109 <= target <= 109
 
-    ### CONTEXT:
-    {metrics_dict}
+        ### CONTEXT:
+        Question Number: {i + 1}
+        Metrics: {metrics_dict}
 
-    Generate one unique coding question following the format strictly:"""
+        Generate one unique {'easy' if i == 0 else 'medium' if i == 1 else 'hard'} coding question following the format strictly:"""
+        
+        model = model_config()
+        response = model.generate_content(prompt)
+        questions.append(response.text)
     
-    model = model_config()
-    response = model.generate_content(prompt)
-    markdown_text = response.text
-    html_content = markdown.markdown(markdown_text)
-    return html_content
+    return questions
 
 def generate_HR(metrics_dict:dict)->list:
     prompt = f"""You are an AI interviewer generating HR questions for the final round of a job interview.

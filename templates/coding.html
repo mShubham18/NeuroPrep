@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NeuroPrep - Coding Round</title>
+    <!-- Monaco Editor -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.36.1/min/vs/loader.min.js"></script>
+    <!-- Marked for Markdown -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <style>
+        body {
+            font-family: 'Arial', sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f5f5f5;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+        .header {
+            background: white;
+            padding: 15px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            z-index: 100;
+        }
+        .main-container {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+        }
+        .question-panel {
+            width: 40%;
+            background: white;
+            padding: 20px;
+            overflow-y: auto;
+            border-right: 1px solid #ddd;
+        }
+        .editor-panel {
+            width: 60%;
+            display: flex;
+            flex-direction: column;
+        }
+        #editor-container {
+            flex: 1;
+        }
+        .controls {
+            padding: 15px;
+            background: white;
+            border-top: 1px solid #ddd;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .language-selector {
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            margin-right: 10px;
+        }
+        button {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background-color 0.3s;
+        }
+        .run-btn {
+            background: #28a745;
+            color: white;
+            margin-right: 10px;
+        }
+        .submit-btn {
+            background: #007bff;
+            color: white;
+        }
+        .run-btn:hover { background: #218838; }
+        .submit-btn:hover { background: #0056b3; }
+        .question-nav {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #ddd;
+        }
+        .nav-btn {
+            background: #6c757d;
+            color: white;
+        }
+        .nav-btn:hover { background: #5a6268; }
+        .nav-btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        #question-content {
+            line-height: 1.6;
+        }
+        #question-content h1 { color: #2c3e50; }
+        #question-content pre {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 4px;
+            overflow-x: auto;
+        }
+        .timer {
+            text-align: right;
+            color: #666;
+            margin-bottom: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Coding Round</h1>
+        <div class="timer" id="timer">Time remaining: <span>00:00</span></div>
+    </div>
+
+    <div class="main-container">
+        <div class="question-panel">
+            <div class="question-nav">
+                <button class="nav-btn" id="prevBtn" disabled>Previous</button>
+                <span>Question <span id="currentQuestion">1</span>/3</span>
+                <button class="nav-btn" id="nextBtn">Next</button>
+            </div>
+            <div id="question-content">
+                Loading question...
+            </div>
+        </div>
+
+        <div class="editor-panel">
+            <div id="editor-container"></div>
+            <div class="controls">
+                <select class="language-selector" id="language-select">
+                    <option value="python">Python</option>
+                    <option value="javascript">JavaScript</option>
+                    <option value="java">Java</option>
+                    <option value="cpp">C++</option>
+                </select>
+                <div>
+                    <button class="run-btn" id="runBtn">Run Code</button>
+                    <button class="submit-btn" id="submitBtn">Submit</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let editor;
+        let currentQuestionIndex = 0;
+        let questions = [];
+        let timeLimit = 45 * 60; // 45 minutes in seconds
+
+        // Initialize Monaco Editor
+        require.config({ paths: { vs: 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.36.1/min/vs' }});
+        require(['vs/editor/editor.main'], function() {
+            editor = monaco.editor.create(document.getElementById('editor-container'), {
+                value: '# Write your code here\n',
+                language: 'python',
+                theme: 'vs-dark',
+                minimap: { enabled: false },
+                fontSize: 14,
+                automaticLayout: true
+            });
+
+            // Load questions after editor is ready
+            loadQuestions();
+            startTimer();
+        });
+
+        async function loadQuestions() {
+            try {
+                const response = await fetch('/get-coding-questions');
+                const data = await response.json();
+                
+                if (data.success) {
+                    questions = data.questions;
+                    showQuestion(currentQuestionIndex);
+                }
+            } catch (error) {
+                console.error('Error loading questions:', error);
+            }
+        }
+
+        function showQuestion(index) {
+            if (index >= 0 && index < questions.length) {
+                document.getElementById('question-content').innerHTML = marked.parse(questions[index]);
+                document.getElementById('currentQuestion').textContent = index + 1;
+                document.getElementById('prevBtn').disabled = index === 0;
+                document.getElementById('nextBtn').disabled = index === questions.length - 1;
+                currentQuestionIndex = index;
+            }
+        }
+
+        document.getElementById('language-select').addEventListener('change', function(e) {
+            monaco.editor.setModelLanguage(editor.getModel(), e.target.value);
+        });
+
+        document.getElementById('prevBtn').addEventListener('click', () => {
+            if (currentQuestionIndex > 0) {
+                showQuestion(currentQuestionIndex - 1);
+            }
+        });
+
+        document.getElementById('nextBtn').addEventListener('click', () => {
+            if (currentQuestionIndex < questions.length - 1) {
+                showQuestion(currentQuestionIndex + 1);
+            }
+        });
+
+        document.getElementById('runBtn').addEventListener('click', async () => {
+            const code = editor.getValue();
+            // Add code execution logic here
+            alert('Code execution feature coming soon!');
+        });
+
+        document.getElementById('submitBtn').addEventListener('click', async () => {
+            try {
+                const response = await fetch('/submit-coding', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        code: editor.getValue(),
+                        question_index: currentQuestionIndex,
+                        language: document.getElementById('language-select').value
+                    })
+                });
+                
+                const data = await response.json();
+                if (data.success) {
+                    if (data.next_question !== null) {
+                        showQuestion(data.next_question);
+                    } else {
+                        window.location.href = '/hr'; // Move to HR round
+                    }
+                }
+            } catch (error) {
+                console.error('Error submitting code:', error);
+            }
+        });
+
+        function startTimer() {
+            let timeRemaining = timeLimit;
+            updateTimerDisplay(timeRemaining);
+            
+            const timer = setInterval(() => {
+                timeRemaining--;
+                updateTimerDisplay(timeRemaining);
+                
+                if (timeRemaining <= 0) {
+                    clearInterval(timer);
+                    window.location.href = '/hr'; // Auto-submit and move to HR round
+                }
+            }, 1000);
+        }
+
+        function updateTimerDisplay(seconds) {
+            const minutes = Math.floor(seconds / 60);
+            const remainingSeconds = seconds % 60;
+            document.querySelector('#timer span').textContent = 
+                `${String(minutes).padStart(2, '0')}:${String(remainingSeconds).padStart(2, '0')}`;
+        }
+    </script>
+</body>
+</html> 

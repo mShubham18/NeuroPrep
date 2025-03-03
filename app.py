@@ -1,8 +1,9 @@
 import os
 import datetime
 import openai
-from flask import Flask, render_template, request, jsonify, session, redirect, url_for
+from flask import Flask, render_template, request, jsonify, session, redirect, url_for, Response
 from flask_socketio import SocketIO, emit
+from flask_cors import CORS
 from dotenv import load_dotenv
 from pipelines.question_generation_pipeline import question_generation_pipeline
 from components.voice_chat import VoiceChat
@@ -11,12 +12,21 @@ from services.proctor_service import ProctorService
 from services.speech_analysis import SpeechAnalyzer
 import uuid
 import sqlite3
+import queue
+import threading
+import time
 
 load_dotenv()
 
 app = Flask(__name__)
 app.secret_key = os.urandom(24)  # Add secret key for session management
-socketio = SocketIO(app)
+CORS(app)  # Enable CORS
+socketio = SocketIO(app, cors_allowed_origins="*")
+
+# Configure upload folder
+app.config['UPLOAD_FOLDER'] = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'uploads')
+if not os.path.exists(app.config['UPLOAD_FOLDER']):
+    os.makedirs(app.config['UPLOAD_FOLDER'])
 
 # Load environment variables
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
@@ -29,6 +39,7 @@ speech_analyzer = None  # Will be initialized per session
 
 # Global Variable (Initializes only when accessed)
 INTERVIEW_QUESTIONS = {}
+progress_queues = {}
 
 # Function to check if questions are loaded
 def questions_are_loaded():
@@ -65,6 +76,7 @@ def upload():
 def process_resume():
     try:
         if 'resume' not in request.files:
+            print("No resume file in request")  # Debug log
             return jsonify({
                 "success": False,
                 "error": "No resume file uploaded"
@@ -72,70 +84,204 @@ def process_resume():
         
         file = request.files['resume']
         if file.filename == '':
+            print("Empty filename")  # Debug log
             return jsonify({
                 "success": False,
                 "error": "No file selected"
             })
         
         if file and allowed_file(file.filename):
-            # Save the file
-            filename = secure_filename(file.filename)
-            file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-            file.save(file_path)
-            
-            # Store the file path in session
-            session['resume_path'] = file_path
-            
-            return jsonify({
-                "success": True,
-                "redirect": "/preparing"
-            })
+            try:
+                # Save the file
+                filename = secure_filename(file.filename)
+                file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+                print(f"Saving file to: {file_path}")  # Debug log
+                file.save(file_path)
+                
+                # Verify file was saved
+                if not os.path.exists(file_path):
+                    raise Exception("Failed to save file")
+                
+                # Store the file path in session
+                session['resume_path'] = file_path
+                print(f"File saved successfully at: {file_path}")  # Debug log
+                
+                return jsonify({
+                    "success": True,
+                    "redirect": "/preparing"
+                })
+            except Exception as save_error:
+                print(f"Error saving file: {str(save_error)}")  # Debug log
+                return jsonify({
+                    "success": False,
+                    "error": f"Failed to save file: {str(save_error)}"
+                })
         else:
+            print(f"Invalid file type: {file.filename}")  # Debug log
             return jsonify({
                 "success": False,
                 "error": "Invalid file type. Please upload PDF, DOC, or DOCX files only."
             })
     except Exception as e:
+        print(f"Error processing resume: {str(e)}")  # Debug log
         return jsonify({
             "success": False,
-            "error": str(e)
+            "error": f"Error processing resume: {str(e)}"
         })
 
 @app.route("/preparing")
 def preparing():
     return render_template("preparing.html")
 
+@app.route('/progress-stream')
+def progress_stream():
+    try:
+        user_id = session.get('user_id')
+        if not user_id:
+            print("No user_id in session for progress stream")  # Debug log
+            return "data: ERROR:User session not found\n\n", 200, {'Content-Type': 'text/event-stream'}
+            
+        if user_id not in progress_queues:
+            print(f"No progress queue found for user: {user_id}")  # Debug log
+            return "data: ERROR:Progress tracking not initialized\n\n", 200, {'Content-Type': 'text/event-stream'}
+
+        def generate():
+            try:
+                queue_obj = progress_queues[user_id]
+                last_message_time = time.time()
+                
+                while True:
+                    try:
+                        # Send heartbeat every 15 seconds if no message
+                        current_time = time.time()
+                        if current_time - last_message_time >= 15:
+                            yield "data: heartbeat\n\n"
+                            last_message_time = current_time
+                            
+                        # Try to get a message from the queue
+                        try:
+                            message = queue_obj.get(timeout=1)
+                            last_message_time = time.time()
+                            yield f"data: {message}\n\n"
+                            
+                            # If this is a redirect or error message, stop streaming
+                            if message.startswith('REDIRECT:') or message.startswith('ERROR:'):
+                                break
+                        except queue.Empty:
+                            continue
+                            
+                    except Exception as e:
+                        print(f"Error in progress stream loop: {str(e)}")  # Debug log
+                        yield f"data: ERROR:Internal server error: {str(e)}\n\n"
+                        break
+                        
+            except Exception as e:
+                print(f"Error in progress stream generator: {str(e)}")  # Debug log
+                yield f"data: ERROR:Stream error: {str(e)}\n\n"
+                
+            finally:
+                # Cleanup
+                if user_id in progress_queues:
+                    del progress_queues[user_id]
+                    
+        return Response(generate(), mimetype='text/event-stream')
+        
+    except Exception as e:
+        print(f"Error setting up progress stream: {str(e)}")  # Debug log
+        return "data: ERROR:Failed to setup progress stream\n\n", 200, {'Content-Type': 'text/event-stream'}
+
 @app.route("/generate-questions")
 def generate_questions():
     try:
         resume_path = session.get('resume_path')
+        print(f"Resume path from session: {resume_path}")  # Debug log
+        
         if not resume_path:
+            print("No resume path in session")  # Debug log
             return jsonify({
                 "success": False,
                 "error": "No resume found"
             })
+            
+        if not os.path.exists(resume_path):
+            print(f"Resume file not found at: {resume_path}")  # Debug log
+            return jsonify({
+                "success": False,
+                "error": "Resume file not found"
+            })
 
-        # Generate questions
-        intro, apt, tech, code, hr = question_generation_pipeline(resume_path)
+        # Get user_id from session before starting thread
+        user_id = session.get('user_id')
+        if not user_id:
+            print("No user_id in session")  # Debug log
+            return jsonify({
+                "success": False,
+                "error": "User session not found"
+            })
+            
+        print(f"Generating questions for user: {user_id}")  # Debug log
         
-        # Store questions in global variable
-        global INTERVIEW_QUESTIONS
-        INTERVIEW_QUESTIONS = {
-            "introduction": intro,
-            "aptitude": apt,
-            "technical": tech,
-            "coding": code,
-            "hr": hr
-        }
+        # Clean up any existing queue
+        if user_id in progress_queues:
+            del progress_queues[user_id]
         
-        # Set introduction questions for voice chat
-        voice_chat.set_questions(intro)
+        # Create new queue
+        progress_queues[user_id] = queue.Queue()
+
+        def progress_callback(message):
+            print(f"Progress callback: {message}")  # Debug log
+            if user_id in progress_queues:
+                progress_queues[user_id].put(message)
+
+        # Generate questions in a separate thread
+        def generate():
+            try:
+                # Clear any existing questions
+                global INTERVIEW_QUESTIONS
+                INTERVIEW_QUESTIONS = {}
+                
+                progress_callback("Starting question generation...")
+                print(f"Calling question_generation_pipeline with resume: {resume_path}")  # Debug log
+                
+                intro, apt, tech, code, hr = question_generation_pipeline(resume_path, progress_callback)
+                print("Question generation pipeline completed")  # Debug log
+                
+                # Store questions in global variable
+                INTERVIEW_QUESTIONS = {
+                    "introduction": intro,
+                    "aptitude": apt,
+                    "technical": tech,
+                    "coding": code,
+                    "hr": hr
+                }
+
+                # Verify questions were stored properly
+                if not all(key in INTERVIEW_QUESTIONS and INTERVIEW_QUESTIONS[key] for key in ["introduction", "aptitude", "technical", "coding", "hr"]):
+                    raise Exception("Failed to generate all required questions")
+
+                print("Questions stored successfully")  # Debug log
+                
+                # Set introduction questions for voice chat
+                voice_chat.set_questions(intro)
+                
+                # Signal completion and redirect
+                progress_callback("All questions generated successfully!")
+                progress_callback("REDIRECT:/introduction")
+            except Exception as e:
+                print(f"Error in generate thread: {str(e)}")  # Debug log
+                progress_callback(f"ERROR:{str(e)}")
+
+        thread = threading.Thread(target=generate)
+        thread.daemon = True
+        thread.start()
+        print("Question generation thread started")  # Debug log
         
         return jsonify({
             "success": True,
-            "redirect": "/introduction"
+            "message": "Question generation started"
         })
     except Exception as e:
+        print(f"Error in generate_questions: {str(e)}")  # Debug log
         return jsonify({
             "success": False,
             "error": str(e)
@@ -194,11 +340,6 @@ def hr_test():
 def allowed_file(filename):
     return '.' in filename and \
            filename.rsplit('.', 1)[1].lower() in {'pdf', 'doc', 'docx'}
-
-# Add this near the top of your file with other configurations
-app.config['UPLOAD_FOLDER'] = 'uploads'
-if not os.path.exists(app.config['UPLOAD_FOLDER']):
-    os.makedirs(app.config['UPLOAD_FOLDER'])
 
 @app.route("/start-interview", methods=["POST"])
 def start_interview():
@@ -377,10 +518,7 @@ def submit_technical():
         overall_score = (correct_answers / total_questions) * 100 if total_questions > 0 else 0
         category_scores = {}
         for category, data in metrics.items():
-            if data['total'] > 0:
-                category_scores[category] = (data['correct'] / data['total']) * 100
-            else:
-                category_scores[category] = 0
+            category_scores[category] = (data['correct'] / data['total']) * 100 if data['total'] > 0 else 0
         
         # Store comprehensive results in session
         session['technical_score'] = {
@@ -400,7 +538,7 @@ def submit_technical():
             "correct_answers": correct_answers,
             "total_questions": total_questions,
             "question_results": question_results,
-            "next_round_url": "/hr"
+            "next_round_url": "/coding"
         })
     except Exception as e:
         print(f"Error submitting technical answers: {str(e)}")
@@ -534,6 +672,57 @@ def end_monitoring():
     session['monitoring'] = False
     
     return jsonify({'status': 'success'})
+
+@app.route("/get-coding-questions")
+@require_questions
+def get_coding_questions():
+    try:
+        coding_questions = INTERVIEW_QUESTIONS.get("coding", [])
+        if not coding_questions:
+            return jsonify({
+                "success": False,
+                "error": "No coding questions found"
+            })
+            
+        # Format questions for frontend
+        formatted_questions = []
+        for question in coding_questions:
+            # Clean up any extra whitespace and ensure proper markdown formatting
+            cleaned_question = "\n".join(line.strip() for line in question.split("\n"))
+            formatted_questions.append(cleaned_question)
+            
+        return jsonify({
+            "success": True,
+            "questions": formatted_questions,
+            "current_question": 0
+        })
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        })
+
+@app.route("/submit-coding", methods=["POST"])
+@require_questions
+def submit_coding():
+    try:
+        data = request.json
+        code = data.get("code", "")
+        question_index = data.get("question_index", 0)
+        language = data.get("language", "python")
+        
+        # Here you can add code execution/testing logic
+        
+        return jsonify({
+            "success": True,
+            "next_question": question_index + 1 if question_index < 2 else None,
+            "message": "Code submitted successfully!"
+        })
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        })
 
 if __name__ == '__main__':
     # Create the uploads directory if it doesn't exist
