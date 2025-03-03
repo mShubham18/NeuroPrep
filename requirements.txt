@@ -9,9 +9,9 @@ pdfplumber
 python-docx 
 flask 
 werkzeug
-dotenv
+python-dotenv
 markdown
 openai
 pyjwt
-
+livekit
 

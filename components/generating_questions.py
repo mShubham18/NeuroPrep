@@ -2,23 +2,49 @@ from components.model_configuration import model_config
 import markdown
 
 def generate_Introduction(metrics_dict:dict)->list:
-    prompt = f"""I am creating a web app platform that fetches user resumes and provides a mock interview consisting of Aptitude & Reasoning, Technical, and HR rounds. I have some detailed metrics that can be used to create question content for the exam.
+    prompt = f"""You are an AI interviewer generating introduction questions for a job interview.
 
-    I'll be providing the metrics to you in the form of dictionary The metrics contain the information that you could use to create the question like difficulty, skills and all. it consits of many other metrics too so only use those metrics that are needed for questions related to Introduction. round. as I have total 4 rounds like: Introduction, Aptitude, Technical,Coding, and Hr round
-    what i need in return is a list of 5-7 Introduction round questions, comma seperated and seprated by "||". they should be basically to greet the user, make him comfortable and prepared for the exam.
-    The name of the job seeker is ramesh.
-    start with greeting like hello how are you
-    Always assume this is a real interview so dont talk about things like how do you like this mock interview
-    since this is just a introduction round, do not talk about deeep technical stuff as it will later on be explain
+    ### STRICT OUTPUT FORMAT RULES:
+    1. Generate EXACTLY 5 questions (no more, no less)
+    2. Each question must be separated by exactly "||"
+    3. First question MUST be a greeting
+    4. NO explanations, NO comments, NO numbering
+    5. NO empty questions or extra spaces
+    6. NO quotation marks around questions
 
-    do not include any unncessary clutter like explaination and salutation
-    keep the questions progessive asumming you have got your respinse to the qeustions
+    ### QUESTION GUIDELINES:
+    - Start with "Hello, how are you?"
+    - Keep questions professional and progressive
+    - Focus on making the candidate comfortable
+    - Avoid technical topics
+    - Treat this as a real interview (don't mention it being a mock interview)
 
-    {metrics_dict}"""
+    ### EXAMPLE OUTPUT FORMAT:
+    Hello, how are you? || Could you briefly introduce yourself? || What made you interested in this position? || What are your career goals? || Why do you think you would be a good fit for this role?
+
+    ### CONTEXT:
+    {metrics_dict}
+
+    Generate exactly 5 questions following the format strictly:"""
+    
     model = model_config()
     response = model.generate_content(prompt)
-    questions_list = (response.text).split("||")
-    questions_list = [question.replace("\n","") for question in questions_list]
+    questions_list = response.text.strip().split("||")
+    questions_list = [question.strip() for question in questions_list]
+    
+    # Ensure exactly 5 questions
+    if len(questions_list) < 5:
+        default_questions = [
+            "Hello, how are you?",
+            "Could you briefly introduce yourself?",
+            "What made you interested in this position?",
+            "What are your career goals?",
+            "Why do you think you would be a good fit for this role?"
+        ]
+        questions_list = default_questions[:5]
+    elif len(questions_list) > 5:
+        questions_list = questions_list[:5]
+    
     return questions_list
 
 def generate_Aptitude(metrics_dict:dict)->dict:
@@ -40,15 +66,19 @@ def generate_Aptitude(metrics_dict:dict)->dict:
     **Output the questions now:**"""
     model = model_config()
     response = model.generate_content(prompt)
-    questions = (response.text).split("||")
+    questions = response.text.strip().split("||")
     aptitude_questions_dict = {}
     for line in questions:
-        question_list = line.split("//")
-        question= question_list[0]
-        mcq= question_list[1]
-        mcq_list = mcq.split(",")
-        aptitude_questions_dict[question]=mcq_list
-
+        try:
+            question_list = line.strip().split("//")
+            if len(question_list) == 2:
+                question = question_list[0].strip()
+                mcq = question_list[1].strip()
+                mcq_list = [opt.strip() for opt in mcq.split(",")]
+                if len(mcq_list) == 4:  # Ensure exactly 4 options
+                    aptitude_questions_dict[question] = mcq_list
+        except:
+            continue
     return aptitude_questions_dict
 
 def generate_Technical(metrics_dict:dict)->dict:
@@ -67,53 +97,110 @@ def generate_Technical(metrics_dict:dict)->dict:
     ### **Output Format Example:**
     What is the primary key in a database? // A unique identifier, A duplicate record, A null value, A foreign key ||
     What does an operating system do? // Manages hardware, Compiles code, Runs JavaScript, Controls database records
+
     ### **Here are the question generation metrics:**
     {metrics_dict}
+
     Now, generate exactly **30 MCQs** following the format strictly. Ensure all questions and answers are complete and correctly formatted."""
     model = model_config()
     response = model.generate_content(prompt)
-    questions = (response.text).split("||")
+    questions = response.text.strip().split("||")
     technical_questions_dict = {}
     for line in questions:
-        question_list = line.split("//")
-        question= question_list[0]
-        mcq= question_list[1]
-        mcq_list = mcq.split(",")
-        technical_questions_dict[question]=mcq_list
-
+        try:
+            question_list = line.strip().split("//")
+            if len(question_list) == 2:
+                question = question_list[0].strip()
+                mcq = question_list[1].strip()
+                mcq_list = [opt.strip() for opt in mcq.split(",")]
+                if len(mcq_list) == 4:  # Ensure exactly 4 options
+                    technical_questions_dict[question] = mcq_list
+        except:
+            continue
     return technical_questions_dict
 
-
 def generate_Coding(metrics_dict:dict)->str:
-    prompt = f"""I am creating a web app platform that fetches user resumes and provides a mock interview consisting of Aptitude & Reasoning, Technical, and HR rounds. I have some detailed metrics that can be used to create question content for the exam.
+    prompt = f"""You are an AI generating a coding question in LeetCode format.
 
-    I'll be providing the metrics to you in the form of dictionary The metrics contain the information that you could use to create the question like difficulty, skills and all. it consits of many other metrics too so only use those metrics that are needed for questions related to aptitude as i'll be seprately creating for other techniacla rounds.
-    what i need in return is A codig question in leetcode format like how a leetcode question is in the format of a Markdown format. It should contain each and everthing
+    ### STRICT OUTPUT FORMAT:
+    1. Question must be in Markdown format
+    2. Include: Title, Difficulty, Problem Statement, Examples, Constraints
+    3. NO solutions, NO hints, NO explanations
+    4. NO comments or additional formatting
 
-    Keep in mind the question should be unique and free from copyrighted material or must have noticelably name and value changes
-    Since this question is for examinee, it should not reveal any other info just statement, description and other things no comments like in the brakcerts etc.
-    metrics dictionary: 
-    {metrics_dict}"""
+    ### EXAMPLE FORMAT:
+    # Two Sum
+    **Difficulty**: Easy
+
+    Given an array of integers nums and an integer target, return indices of the two numbers such that they add up to target.
+
+    **Examples:**
+    Input: nums = [2,7,11,15], target = 9
+    Output: [0,1]
+    Explanation: Because nums[0] + nums[1] == 9, we return [0, 1]
+
+    **Constraints:**
+    - 2 <= nums.length <= 104
+    - -109 <= nums[i] <= 109
+    - -109 <= target <= 109
+
+    ### CONTEXT:
+    {metrics_dict}
+
+    Generate one unique coding question following the format strictly:"""
+    
     model = model_config()
     response = model.generate_content(prompt)
     markdown_text = response.text
     html_content = markdown.markdown(markdown_text)
-
     return html_content
 
 def generate_HR(metrics_dict:dict)->list:
-    prompt = f"""I am creating a web app platform that fetches user resumes and provides a mock interview consisting of Aptitude & Reasoning, Technical, and HR rounds. I have some detailed metrics that can be used to create question content for the exam.
+    prompt = f"""You are an AI interviewer generating HR questions for the final round of a job interview.
 
-    I'll be providing the metrics to you in the form of dictionary The metrics contain the information that you could use to create the question like difficulty, skills and all. it consits of many other metrics too so only use those metrics that are needed for questions related to HR round. as i'll be seprately creating for other techniacla rounds.
-    what i need in return is a list of 5-10 HR round questions, more the difficulty more is the num of questions , seprated by comma and divided by "||"
+    ### STRICT OUTPUT FORMAT RULES:
+    1. Generate EXACTLY 7 questions (no more, no less)
+    2. Each question must be separated by exactly "||"
+    3. NO explanations, NO comments, NO numbering
+    4. NO empty questions or extra spaces
+    5. NO quotation marks around questions
 
-    do not include any unncessary clutter like explaination and salutation
-    metrics dictionary: 
-    {metrics_dict}"""
+    ### QUESTION GUIDELINES:
+    - Focus on behavioral and situational questions
+    - Include questions about:
+      * Past experiences
+      * Problem-solving abilities
+      * Team collaboration
+      * Conflict resolution
+      * Future aspirations
+    - Keep questions professional and relevant to the candidate's experience
+
+    ### EXAMPLE OUTPUT FORMAT:
+    Tell me about a challenging project you worked on. || How do you handle conflicts in a team? || Describe a situation where you demonstrated leadership. || What are your salary expectations? || Where do you see yourself in five years? || How do you handle work pressure? || What questions do you have for us?
+
+    ### CONTEXT:
+    {metrics_dict}
+
+    Generate exactly 7 questions following the format strictly:"""
+    
     model = model_config()
     response = model.generate_content(prompt)
-    questions_list = response.text
-    questions_list=questions_list.split("||")
-    questions_list = [question.replace("\n","") for question in questions_list]
-
+    questions_list = response.text.strip().split("||")
+    questions_list = [question.strip() for question in questions_list]
+    
+    # Ensure exactly 7 questions
+    if len(questions_list) < 7:
+        default_questions = [
+            "Tell me about a challenging project you worked on.",
+            "How do you handle conflicts in a team?",
+            "Describe a situation where you demonstrated leadership.",
+            "What are your salary expectations?",
+            "Where do you see yourself in five years?",
+            "How do you handle work pressure?",
+            "What questions do you have for us?"
+        ]
+        questions_list = default_questions[:7]
+    elif len(questions_list) > 7:
+        questions_list = questions_list[:7]
+    
     return questions_list
