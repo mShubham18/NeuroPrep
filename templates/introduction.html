@@ -211,7 +211,7 @@
                 
                 const data = await result.json();
                 if (data.success) {
-                    if (data.continue) {
+                    if (!data.is_complete && data.next_question) {
                         addMessage(data.next_question, 'interviewer');
                         speakText(data.next_question);
                         setTimeout(() => recognition.start(), 1000);

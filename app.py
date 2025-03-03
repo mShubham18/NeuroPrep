@@ -2,24 +2,30 @@ import os
 import datetime
 import openai
 from flask import Flask, render_template, request, jsonify, session, redirect, url_for
+from flask_socketio import SocketIO, emit
 from dotenv import load_dotenv
 from pipelines.question_generation_pipeline import question_generation_pipeline
 from components.voice_chat import VoiceChat
 from werkzeug.utils import secure_filename
+from services.proctor_service import ProctorService
+from services.speech_analysis import SpeechAnalyzer
+import uuid
+import sqlite3
 
 load_dotenv()
 
 app = Flask(__name__)
 app.secret_key = os.urandom(24)  # Add secret key for session management
+socketio = SocketIO(app)
 
 # Load environment variables
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
-# Initialize APIs
+# Initialize APIs and services
 openai.api_key = OPENAI_API_KEY
-
-# Initialize VoiceChat
 voice_chat = VoiceChat()
+proctor_service = None  # Will be initialized per session
+speech_analyzer = None  # Will be initialized per session
 
 # Global Variable (Initializes only when accessed)
 INTERVIEW_QUESTIONS = {}
@@ -36,6 +42,16 @@ def require_questions(f):
         return f(*args, **kwargs)
     decorated_function.__name__ = f.__name__
     return decorated_function
+
+@app.before_request
+def initialize_session():
+    global proctor_service, speech_analyzer
+    if 'user_id' not in session:
+        session['user_id'] = str(uuid.uuid4())
+    if proctor_service is None:
+        proctor_service = ProctorService(session_id=session['user_id'])
+    if speech_analyzer is None:
+        speech_analyzer = SpeechAnalyzer(session_id=session['user_id'])
 
 @app.route("/")
 def index():
@@ -233,19 +249,18 @@ def process_response():
         })
 
 @app.route("/get-aptitude-questions")
+@require_questions
 def get_aptitude_questions():
     try:
-        # Get aptitude questions from the loaded questions
-        aptitude_questions = INTERVIEW_QUESTIONS["aptitude"]
-        
-        # Format questions for the frontend
+        aptitude_questions = INTERVIEW_QUESTIONS.get("aptitude", {})
         formatted_questions = []
-        for question, options in aptitude_questions.items():
+        
+        for question, (options_str, answer) in aptitude_questions.items():
+            options = [opt.strip() for opt in options_str.split(",")]
             formatted_questions.append({
                 "question": question,
-                "options": options,  # This is already a list of 4 options
-                "type": "mcq",  # Multiple choice questions for aptitude
-                "category": "general"  # Default category
+                "options": options,
+                "correct_answer": answer
             })
         
         return jsonify({
@@ -253,10 +268,9 @@ def get_aptitude_questions():
             "questions": formatted_questions
         })
     except Exception as e:
-        print(f"Error getting aptitude questions: {str(e)}")
         return jsonify({
             "success": False,
-            "error": "Failed to load aptitude questions"
+            "error": str(e)
         })
 
 @app.route("/get-technical-questions")
@@ -266,12 +280,15 @@ def get_technical_questions():
         
         # Format questions for the frontend
         formatted_questions = []
-        for question, options in technical_questions.items():
+        for question, data in technical_questions.items():
+            options = [opt.strip() for opt in data[0].split(",")]  # Split options string into list
+            correct_answer = data[1]  # Get the correct answer
             formatted_questions.append({
                 "question": question,
-                "options": options,  # This is already a list of 4 options
-                "type": "mcq",  # All technical questions are MCQs as per generate_Technical
-                "category": "technical",  # Default category
+                "options": options,  # List of options
+                "type": "mcq",
+                "category": "technical",
+                "correct_answer": correct_answer,  # Include correct answer
                 "hints": [],  # No hints in the current format
                 "test_cases": None  # No test cases for MCQs
             })
@@ -288,35 +305,20 @@ def get_technical_questions():
         })
 
 @app.route("/submit-aptitude", methods=["POST"])
+@require_questions
 def submit_aptitude():
     try:
         answers = request.json.get("answers", [])
-        
-        # Calculate score
-        aptitude_questions = INTERVIEW_QUESTIONS["aptitude"]
-        correct_answers = 0
-        total_questions = len(aptitude_questions)
-        
-        for i, answer in enumerate(answers):
-            if i < total_questions:
-                # Assuming each question has a 'correct_answer' field
-                if answer == aptitude_questions[i].get("correct_answer"):
-                    correct_answers += 1
-        
-        score = (correct_answers / total_questions) * 100 if total_questions > 0 else 0
+        # Here you can process and store the answers
         
         return jsonify({
             "success": True,
-            "score": score,
-            "correct_answers": correct_answers,
-            "total_questions": total_questions,
             "next_round_url": "/technical"
         })
     except Exception as e:
-        print(f"Error submitting aptitude answers: {str(e)}")
         return jsonify({
             "success": False,
-            "error": "Failed to submit answers"
+            "error": str(e)
         })
 
 @app.route("/submit-technical", methods=["POST"])
@@ -324,33 +326,81 @@ def submit_technical():
     try:
         answers = request.json.get("answers", [])
         
-        # Process technical answers (can be more complex based on question type)
+        # Get technical questions and initialize scoring
         technical_questions = INTERVIEW_QUESTIONS["technical"]
-        results = []
+        questions_list = list(technical_questions.items())
+        total_questions = len(technical_questions)
         
+        # Initialize metrics
+        metrics = {
+            'system_design': {'correct': 0, 'total': 0},
+            'operating_systems': {'correct': 0, 'total': 0},
+            'databases': {'correct': 0, 'total': 0},
+            'networking': {'correct': 0, 'total': 0},
+            'data_structures': {'correct': 0, 'total': 0},
+            'algorithms': {'correct': 0, 'total': 0}
+        }
+        
+        question_results = []
+        correct_answers = 0
+        
+        # Validate each answer and calculate metrics
         for i, answer in enumerate(answers):
-            if i < len(technical_questions):
-                question = technical_questions[i]
-                if question.get("type") == "coding":
-                    # Here you would evaluate the code against test cases
-                    result = {
-                        "question": i + 1,
-                        "status": "Evaluated",  # You can add actual evaluation logic
-                        "feedback": "Code submitted successfully"
-                    }
-                else:
-                    # For theory/MCQ questions
-                    result = {
-                        "question": i + 1,
-                        "status": "Submitted",
-                        "feedback": "Answer recorded"
-                    }
-                results.append(result)
+            if i < len(questions_list):
+                question_data = questions_list[i]
+                question_text = question_data[0]
+                correct_answer = question_data[1][1]
+                
+                # Determine question category based on content
+                category = determine_technical_category(question_text)
+                metrics[category]['total'] += 1
+                
+                # Check if answer is correct
+                is_correct = str(answer) == str(correct_answer)
+                if is_correct:
+                    correct_answers += 1
+                    metrics[category]['correct'] += 1
+                
+                # Store detailed result
+                result = {
+                    "question_number": i + 1,
+                    "question_text": question_text,
+                    "user_answer": answer,
+                    "correct_answer": correct_answer,
+                    "is_correct": is_correct,
+                    "category": category,
+                    "feedback": "Correct!" if is_correct else f"Incorrect. The correct answer was: {correct_answer}"
+                }
+                question_results.append(result)
+        
+        # Calculate scores
+        overall_score = (correct_answers / total_questions) * 100 if total_questions > 0 else 0
+        category_scores = {}
+        for category, data in metrics.items():
+            if data['total'] > 0:
+                category_scores[category] = (data['correct'] / data['total']) * 100
+            else:
+                category_scores[category] = 0
+        
+        # Store comprehensive results in session
+        session['technical_score'] = {
+            'overall_score': overall_score,
+            'correct_answers': correct_answers,
+            'total_questions': total_questions,
+            'category_scores': category_scores,
+            'metrics': metrics,
+            'question_results': question_results
+        }
         
         return jsonify({
             "success": True,
-            "results": results,
-            "next_round_url": "/hr"  # Next round after technical
+            "overall_score": overall_score,
+            "category_scores": category_scores,
+            "metrics": metrics,
+            "correct_answers": correct_answers,
+            "total_questions": total_questions,
+            "question_results": question_results,
+            "next_round_url": "/hr"
         })
     except Exception as e:
         print(f"Error submitting technical answers: {str(e)}")
@@ -359,5 +409,162 @@ def submit_technical():
             "error": "Failed to submit answers"
         })
 
-if __name__ == "__main__":
-    app.run(debug=True)
+def determine_aptitude_category(question_text):
+    """Determine the category of an aptitude question based on its content."""
+    question_lower = question_text.lower()
+    
+    # Numerical reasoning patterns
+    if any(word in question_lower for word in ['calculate', 'sum', 'multiply', 'divide', 'percentage', 'ratio', 'number']):
+        return 'numerical_ability'
+    
+    # Logical reasoning patterns
+    elif any(word in question_lower for word in ['if', 'then', 'all', 'some', 'none', 'logical', 'sequence']):
+        return 'logical_reasoning'
+    
+    # Verbal ability patterns
+    elif any(word in question_lower for word in ['word', 'sentence', 'grammar', 'meaning', 'opposite', 'analogy']):
+        return 'verbal_ability'
+    
+    # Abstract reasoning patterns
+    elif any(word in question_lower for word in ['pattern', 'series', 'next', 'figure', 'shape', 'sequence']):
+        return 'abstract_reasoning'
+    
+    # Default to logical reasoning if no clear category is found
+    return 'logical_reasoning'
+
+def determine_technical_category(question_text):
+    """Determine the category of a technical question based on its content."""
+    question_lower = question_text.lower()
+    
+    # System Design patterns
+    if any(word in question_lower for word in ['design', 'architecture', 'scalability', 'system', 'distributed']):
+        return 'system_design'
+    
+    # Operating Systems patterns
+    elif any(word in question_lower for word in ['os', 'process', 'thread', 'memory', 'cpu', 'scheduling']):
+        return 'operating_systems'
+    
+    # Database patterns
+    elif any(word in question_lower for word in ['database', 'sql', 'query', 'table', 'index', 'normalization']):
+        return 'databases'
+    
+    # Networking patterns
+    elif any(word in question_lower for word in ['network', 'protocol', 'tcp', 'ip', 'http', 'dns']):
+        return 'networking'
+    
+    # Data Structures patterns
+    elif any(word in question_lower for word in ['array', 'list', 'tree', 'graph', 'stack', 'queue']):
+        return 'data_structures'
+    
+    # Algorithms patterns
+    elif any(word in question_lower for word in ['algorithm', 'complexity', 'sort', 'search', 'dynamic', 'recursive']):
+        return 'algorithms'
+    
+    # Default to system design if no clear category is found
+    return 'system_design'
+
+@app.route("/view-scores")
+def view_scores():
+    try:
+        # Get scores from session
+        aptitude_score = session.get('aptitude_score', {})
+        technical_score = session.get('technical_score', {})
+        
+        return render_template(
+            "scores.html",
+            aptitude_score=aptitude_score,
+            technical_score=technical_score
+        )
+    except Exception as e:
+        print(f"Error viewing scores: {str(e)}")
+        return "Error loading scores", 500
+
+@socketio.on('connect')
+def handle_connect():
+    session['monitoring'] = True
+    emit('connection_response', {'data': 'Connected'})
+
+@socketio.on('disconnect')
+def handle_disconnect():
+    session['monitoring'] = False
+    proctor_service.end_monitoring(session.get('user_id'))
+
+@socketio.on('frame')
+def handle_frame(frame_data):
+    if not session.get('monitoring'):
+        return
+    
+    incidents = proctor_service.analyze_frame(
+        frame_data,
+        session.get('user_id'),
+        session.get('current_question')
+    )
+    
+    if incidents:
+        emit('incident_detected', {'incidents': incidents})
+
+@socketio.on('audio')
+def handle_audio(audio_data):
+    if not session.get('monitoring'):
+        return
+    
+    metrics = speech_analyzer.analyze_audio(
+        audio_data,
+        session.get('user_id'),
+        session.get('current_question')
+    )
+    
+    if metrics:
+        emit('speech_metrics', {'metrics': metrics})
+
+@app.route('/start-monitoring', methods=['POST'])
+def start_monitoring():
+    user_id = session.get('user_id')
+    question_id = request.json.get('question_id')
+    
+    session['current_question'] = question_id
+    proctor_service.start_monitoring(user_id)
+    
+    return jsonify({'status': 'success'})
+
+@app.route('/end-monitoring', methods=['POST'])
+def end_monitoring():
+    user_id = session.get('user_id')
+    proctor_service.end_monitoring(user_id)
+    session['monitoring'] = False
+    
+    return jsonify({'status': 'success'})
+
+if __name__ == '__main__':
+    # Create the uploads directory if it doesn't exist
+    if not os.path.exists(app.config['UPLOAD_FOLDER']):
+        os.makedirs(app.config['UPLOAD_FOLDER'])
+    
+    # Create the database tables
+    with app.app_context():
+        conn = sqlite3.connect('interview.db')
+        cursor = conn.cursor()
+        
+        # Create proctoring_incidents table
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS proctoring_incidents (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id TEXT NOT NULL,
+                timestamp DATETIME NOT NULL,
+                incident_type TEXT NOT NULL,
+                confidence_score FLOAT NOT NULL,
+                details TEXT
+            )
+        ''')
+        
+        conn.commit()
+        conn.close()
+    
+    # Configure for immediate output
+    import sys
+    import logging
+    logging.basicConfig(stream=sys.stdout, level=logging.INFO)
+    
+    # Run the Flask app with SocketIO and force output to be unbuffered
+    app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
+    socketio.run(app, debug=True, host='0.0.0.0', port=5000, log_output=True)

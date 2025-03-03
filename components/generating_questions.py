@@ -52,13 +52,19 @@ def generate_Aptitude(metrics_dict:dict)->dict:
 
     **Instructions:**  
     - Use only the provided **metrics** to create **30 MCQ aptitude questions**.  
+    - Questions MUST be from these categories ONLY:
+        * Numerical Ability (arithmetic, percentages, ratios)
+        * Logical Reasoning (patterns, sequences, analogies)
+        * Verbal Ability (vocabulary, grammar, comprehension)
+        * Data Interpretation (graphs, tables, charts)
+    - NO programming or technical questions
     - Format the output **exactly** as shown below, with `||` separating each question.  
     - Each question **must** follow this structure:  
-      **Question text // option1, option2, option3, option4**  
+      **Question text // option1, option2, option3, option4&answer**  
     - No explanations, no extra text, just the formatted questions.  
 
     **Example Output:**  
-    What is 2+2? // 1, 2, 3, 4 || What is the capital of France? // Berlin, Madrid, Paris, Rome  
+    If 2 workers can complete a task in 6 days, how many days will it take 3 workers? // 2 days, 3 days, 4 days, 5 days&4 days || What comes next in the sequence: 2,4,8,16,? // 24, 32, 36, 40&32  
 
     **Metrics for generating questions:**  
     {metrics_dict}  
@@ -73,10 +79,10 @@ def generate_Aptitude(metrics_dict:dict)->dict:
             question_list = line.strip().split("//")
             if len(question_list) == 2:
                 question = question_list[0].strip()
-                mcq = question_list[1].strip()
-                mcq_list = [opt.strip() for opt in mcq.split(",")]
-                if len(mcq_list) == 4:  # Ensure exactly 4 options
-                    aptitude_questions_dict[question] = mcq_list
+                options_and_answer = question_list[1].strip()
+                options = options_and_answer.split("&")[0].strip()
+                answer = options_and_answer.split("&")[1].strip()
+                aptitude_questions_dict[question] = [options, answer]
         except:
             continue
     return aptitude_questions_dict
@@ -89,14 +95,14 @@ def generate_Technical(metrics_dict:dict)->dict:
     - **Strictly follow the output format** with **no extra explanations, no numbering, and no missing values**.
     - Each question **must have exactly four answer options**.
     - Separate each question using `||` (double pipe).
-    - Use `//` (double forward slashes) to separate the question text from the answer choices.
-    - **The first option should always be the correct answer** (but do not indicate this explicitly).
+    - Each question must follow this format: Question text // option1, option2, option3, option4&answer
+    - Use `//` (double forward slashes) to separate the question text from the choices.
 
     ---
 
     ### **Output Format Example:**
-    What is the primary key in a database? // A unique identifier, A duplicate record, A null value, A foreign key ||
-    What does an operating system do? // Manages hardware, Compiles code, Runs JavaScript, Controls database records
+    What is the primary key in a database? // A unique identifier, A duplicate record, A null value, A foreign key&A unique identifier||
+    What does an operating system do? // Manages hardware, Compiles code, Runs JavaScript, Controls database records&Manages hardware
 
     ### **Here are the question generation metrics:**
     {metrics_dict}
@@ -111,10 +117,10 @@ def generate_Technical(metrics_dict:dict)->dict:
             question_list = line.strip().split("//")
             if len(question_list) == 2:
                 question = question_list[0].strip()
-                mcq = question_list[1].strip()
-                mcq_list = [opt.strip() for opt in mcq.split(",")]
-                if len(mcq_list) == 4:  # Ensure exactly 4 options
-                    technical_questions_dict[question] = mcq_list
+                options_and_answer = question_list[1].strip()
+                options = options_and_answer.split("&")[0].strip()
+                answer = options_and_answer.split("&")[1].strip()
+                technical_questions_dict[question] = [options, answer]
         except:
             continue
     return technical_questions_dict

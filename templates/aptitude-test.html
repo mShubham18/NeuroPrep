@@ -1,0 +1,251 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container mt-4">
+    <div class="row">
+        <!-- Main content -->
+        <div class="col-md-8">
+            <h2>Aptitude Test</h2>
+            <div id="question-container" class="mb-4">
+                <!-- Questions will be loaded here -->
+            </div>
+            <div id="timer" class="alert alert-info">
+                Time remaining: <span id="time">30:00</span>
+            </div>
+            <button id="submit-btn" class="btn btn-primary" onclick="submitTest()">Submit Test</button>
+        </div>
+        
+        <!-- Monitoring sidebar -->
+        <div class="col-md-4">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Interview Monitoring</h5>
+                    <div class="webcam-container mb-3">
+                        <video id="webcam" autoplay playsinline></video>
+                        <canvas id="canvas" style="display: none;"></canvas>
+                    </div>
+                    <div id="monitoring-status" class="alert alert-info">
+                        Status: Setting up...
+                    </div>
+                    <div id="incidents" class="alert alert-warning" style="display: none;">
+                        <!-- Incidents will be shown here -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+<script>
+let socket = null;
+let stream = null;
+let isMonitoring = false;
+let questions = [];
+let timeLeft = 1800; // 30 minutes in seconds
+
+// Initialize monitoring
+async function initializeMonitoring() {
+    try {
+        // Get webcam access
+        stream = await navigator.mediaDevices.getUserMedia({ 
+            video: true,
+            audio: true
+        });
+        
+        // Setup video
+        const video = document.getElementById('webcam');
+        video.srcObject = stream;
+        
+        // Connect to WebSocket
+        socket = io();
+        
+        socket.on('connect', () => {
+            document.getElementById('monitoring-status').innerHTML = 'Status: Connected';
+            isMonitoring = true;
+            startMonitoring();
+        });
+        
+        socket.on('incident_detected', (data) => {
+            showIncident(data.incidents);
+        });
+        
+        socket.on('speech_metrics', (data) => {
+            updateSpeechMetrics(data.metrics);
+        });
+        
+    } catch (error) {
+        console.error('Error setting up monitoring:', error);
+        document.getElementById('monitoring-status').innerHTML = 
+            'Status: Error setting up monitoring. Please ensure camera and microphone access is granted.';
+    }
+}
+
+// Start sending frames and audio
+function startMonitoring() {
+    if (!isMonitoring) return;
+    
+    const video = document.getElementById('webcam');
+    const canvas = document.getElementById('canvas');
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const context = canvas.getContext('2d');
+    
+    // Send video frames
+    setInterval(() => {
+        if (!isMonitoring) return;
+        context.drawImage(video, 0, 0, canvas.width, canvas.height);
+        const frameData = canvas.toDataURL('image/jpeg');
+        socket.emit('frame', frameData);
+    }, 1000); // Send frame every second
+    
+    // Setup audio monitoring
+    const audioContext = new AudioContext();
+    const source = audioContext.createMediaStreamSource(stream);
+    const processor = audioContext.createScriptProcessor(1024, 1, 1);
+    
+    processor.onaudioprocess = (e) => {
+        if (!isMonitoring) return;
+        const audioData = e.inputBuffer.getChannelData(0);
+        socket.emit('audio', Array.from(audioData));
+    };
+    
+    source.connect(processor);
+    processor.connect(audioContext.destination);
+}
+
+function showIncident(incidents) {
+    const container = document.getElementById('incidents');
+    container.style.display = 'block';
+    container.innerHTML = `
+        <strong>Alert:</strong><br>
+        ${incidents.map(incident => `- ${incident}`).join('<br>')}
+    `;
+    setTimeout(() => {
+        container.style.display = 'none';
+    }, 5000);
+}
+
+function updateSpeechMetrics(metrics) {
+    console.log('Speech metrics:', metrics);
+}
+
+// Load questions from server
+async function loadQuestions() {
+    try {
+        const response = await fetch('/get-aptitude-questions');
+        const data = await response.json();
+        
+        if (data.success) {
+            questions = data.questions;
+            displayQuestions();
+            startTimer();
+        } else {
+            alert('Failed to load questions: ' + data.error);
+        }
+    } catch (error) {
+        console.error('Error loading questions:', error);
+        alert('Failed to load questions. Please try refreshing the page.');
+    }
+}
+
+// Display questions in the container
+function displayQuestions() {
+    const container = document.getElementById('question-container');
+    container.innerHTML = questions.map((q, index) => `
+        <div class="question-card">
+            <h5>Question ${index + 1}</h5>
+            <p>${q.question}</p>
+            <div class="options">
+                ${q.options.map((opt, optIndex) => `
+                    <div class="form-check">
+                        <input class="form-check-input" type="radio" 
+                               name="question${index}" 
+                               id="q${index}opt${optIndex}"
+                               value="${opt}">
+                        <label class="form-check-label" for="q${index}opt${optIndex}">
+                            ${opt}
+                        </label>
+                    </div>
+                `).join('')}
+            </div>
+        </div>
+    `).join('');
+}
+
+// Timer functionality
+function startTimer() {
+    const timerElement = document.getElementById('time');
+    const timer = setInterval(() => {
+        if (timeLeft <= 0) {
+            clearInterval(timer);
+            submitTest();
+            return;
+        }
+        
+        const minutes = Math.floor(timeLeft / 60);
+        const seconds = timeLeft % 60;
+        timerElement.textContent = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+        timeLeft--;
+    }, 1000);
+}
+
+// Submit test answers
+async function submitTest() {
+    const answers = [];
+    questions.forEach((_, index) => {
+        const selectedOption = document.querySelector(`input[name="question${index}"]:checked`);
+        answers.push(selectedOption ? selectedOption.value : null);
+    });
+    
+    try {
+        const response = await fetch('/submit-aptitude', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ answers })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            // Stop monitoring
+            if (stream) {
+                stream.getTracks().forEach(track => track.stop());
+            }
+            if (socket) {
+                socket.disconnect();
+            }
+            
+            // Show results and redirect
+            alert(`Test completed!\nScore: ${result.overall_score.toFixed(2)}%\nCorrect answers: ${result.correct_answers}/${result.total_questions}`);
+            window.location.href = result.next_round_url;
+        } else {
+            alert('Failed to submit test: ' + result.error);
+        }
+    } catch (error) {
+        console.error('Error submitting test:', error);
+        alert('Failed to submit test. Please try again.');
+    }
+}
+
+// Initialize when page loads
+document.addEventListener('DOMContentLoaded', () => {
+    initializeMonitoring();
+    loadQuestions();
+});
+
+// Clean up when leaving
+window.addEventListener('beforeunload', () => {
+    if (stream) {
+        stream.getTracks().forEach(track => track.stop());
+    }
+    if (socket) {
+        socket.disconnect();
+    }
+});
+</script>
+{% endblock %} 
