@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NeuroPrep - Aptitude Round</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        .question-container {
+            margin: 20px 0;
+            padding: 20px;
+            background: #f9f9f9;
+            border-radius: 5px;
+        }
+        .options-container {
+            margin: 15px 0;
+        }
+        .option {
+            margin: 10px 0;
+            padding: 10px;
+            background: #fff;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        .option:hover {
+            background: #e3f2fd;
+        }
+        .option.selected {
+            background: #007bff;
+            color: white;
+        }
+        .controls {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 20px;
+        }
+        button {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            background: #007bff;
+            color: white;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .progress {
+            text-align: center;
+            margin-bottom: 20px;
+            color: #666;
+        }
+        .timer {
+            text-align: right;
+            margin-bottom: 10px;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Aptitude Round</h1>
+        
+        <div class="timer" id="timer">Time remaining: <span>00:00</span></div>
+        
+        <div class="progress">
+            Question <span id="currentQuestion">1</span> of <span id="totalQuestions">0</span>
+        </div>
+
+        <div class="question-container">
+            <div id="question">Loading question...</div>
+            
+            <div class="options-container" id="options">
+                <!-- Options will be dynamically inserted here -->
+            </div>
+        </div>
+
+        <div class="controls">
+            <button id="prevButton" disabled>Previous</button>
+            <button id="nextButton">Next</button>
+        </div>
+    </div>
+
+    <script>
+        let currentQuestionIndex = 0;
+        let questions = [];
+        let answers = [];
+        let timeLimit = 30 * 60; // 30 minutes in seconds
+        let timer;
+
+        // Initialize the aptitude round
+        async function initializeAptitude() {
+            try {
+                const response = await fetch('/get-aptitude-questions');
+                const data = await response.json();
+                
+                if (data.success) {
+                    questions = data.questions;
+                    document.getElementById('totalQuestions').textContent = questions.length;
+                    showQuestion(0);
+                    startTimer();
+                }
+            } catch (error) {
+                console.error('Error initializing aptitude round:', error);
+            }
+        }
+
+        function showQuestion(index) {
+            const question = questions[index];
+            document.getElementById('currentQuestion').textContent = index + 1;
+            document.getElementById('question').textContent = question.question;
+            
+            const optionsContainer = document.getElementById('options');
+            optionsContainer.innerHTML = '';
+            
+            question.options.forEach((option, i) => {
+                const optionDiv = document.createElement('div');
+                optionDiv.className = 'option';
+                if (answers[index] === i) optionDiv.classList.add('selected');
+                optionDiv.textContent = option;
+                optionDiv.onclick = () => selectOption(i);
+                optionsContainer.appendChild(optionDiv);
+            });
+
+            document.getElementById('prevButton').disabled = index === 0;
+            document.getElementById('nextButton').textContent = 
+                index === questions.length - 1 ? 'Submit' : 'Next';
+        }
+
+        function selectOption(optionIndex) {
+            answers[currentQuestionIndex] = optionIndex;
+            document.querySelectorAll('.option').forEach(opt => opt.classList.remove('selected'));
+            document.querySelectorAll('.option')[optionIndex].classList.add('selected');
+        }
+
+        function startTimer() {
+            let timeRemaining = timeLimit;
+            updateTimerDisplay(timeRemaining);
+            
+            timer = setInterval(() => {
+                timeRemaining--;
+                updateTimerDisplay(timeRemaining);
+                
+                if (timeRemaining <= 0) {
+                    clearInterval(timer);
+                    submitAnswers();
+                }
+            }, 1000);
+        }
+
+        function updateTimerDisplay(seconds) {
+            const minutes = Math.floor(seconds / 60);
+            const remainingSeconds = seconds % 60;
+            document.querySelector('#timer span').textContent = 
+                `${String(minutes).padStart(2, '0')}:${String(remainingSeconds).padStart(2, '0')}`;
+        }
+
+        async function submitAnswers() {
+            clearInterval(timer);
+            try {
+                const response = await fetch('/submit-aptitude', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ answers: answers })
+                });
+                
+                const data = await response.json();
+                if (data.success) {
+                    // Redirect to technical round or show results
+                    window.location.href = data.next_round_url;
+                }
+            } catch (error) {
+                console.error('Error submitting answers:', error);
+            }
+        }
+
+        document.getElementById('prevButton').onclick = () => {
+            if (currentQuestionIndex > 0) {
+                currentQuestionIndex--;
+                showQuestion(currentQuestionIndex);
+            }
+        };
+
+        document.getElementById('nextButton').onclick = () => {
+            if (currentQuestionIndex < questions.length - 1) {
+                currentQuestionIndex++;
+                showQuestion(currentQuestionIndex);
+            } else {
+                submitAnswers();
+            }
+        };
+
+        // Initialize when page loads
+        initializeAptitude();
+    </script>
+</body>
+</html> 

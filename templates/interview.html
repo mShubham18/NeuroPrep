@@ -256,6 +256,8 @@
                     } else {
                         await speakText(data.message);
                         endInterview();
+                        // Show transition message and button after interview ends
+                        showNextRoundTransition();
                     }
                 } else {
                     console.error('Server returned error:', data);
@@ -267,14 +269,28 @@
             }
         }
 
+        function showNextRoundTransition() {
+            const controls = document.querySelector('.controls');
+            controls.innerHTML = `
+                <div style="text-align: center;">
+                    <p style="margin-bottom: 15px;">Introduction round completed! Ready for the Aptitude MCQ round?</p>
+                    <button id="nextRoundButton" onclick="startAptitudeRound()">Start Aptitude Round</button>
+                </div>
+            `;
+        }
+
+        function startAptitudeRound() {
+            // Redirect to the Aptitude MCQ page
+            window.location.href = '/aptitude';
+        }
+
         function endInterview() {
             conversationActive = false;
             if (recognition) {
                 recognition.stop();
             }
-            document.getElementById('startButton').disabled = false;
             document.getElementById('listeningIndicator').classList.remove('active');
-            document.getElementById('status').textContent = 'Interview completed';
+            document.getElementById('status').textContent = 'Introduction round completed';
         }
 
         // Initialize voices when they're available

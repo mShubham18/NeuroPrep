@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NeuroPrep - Introduction Round Instructions</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+            color: #333;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #2c3e50;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .instruction-section {
+            margin-bottom: 25px;
+        }
+        .instruction-section h2 {
+            color: #3498db;
+            font-size: 1.3em;
+            margin-bottom: 15px;
+        }
+        ul {
+            list-style-type: none;
+            padding-left: 20px;
+        }
+        li {
+            margin-bottom: 10px;
+            position: relative;
+            padding-left: 25px;
+        }
+        li:before {
+            content: "•";
+            color: #3498db;
+            font-size: 1.5em;
+            position: absolute;
+            left: 0;
+            top: -5px;
+        }
+        .start-button {
+            display: block;
+            width: 200px;
+            margin: 30px auto;
+            padding: 15px 30px;
+            background-color: #2ecc71;
+            color: white;
+            text-align: center;
+            text-decoration: none;
+            border-radius: 5px;
+            font-size: 1.1em;
+            transition: background-color 0.3s;
+        }
+        .start-button:hover {
+            background-color: #27ae60;
+        }
+        .tips-section {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 5px;
+            margin: 20px 0;
+        }
+        .tips-section h3 {
+            color: #e67e22;
+            margin-bottom: 15px;
+        }
+        .mic-test {
+            text-align: center;
+            margin: 20px 0;
+            padding: 20px;
+            background: #e8f5e9;
+            border-radius: 5px;
+        }
+        .mic-test button {
+            background: #2ecc71;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 10px;
+        }
+        .mic-test button:hover {
+            background: #27ae60;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Introduction Round Instructions</h1>
+        
+        <div class="instruction-section">
+            <h2>Overview</h2>
+            <ul>
+                <li>This is a voice-based introduction round</li>
+                <li>Total number of questions: 5</li>
+                <li>Format: Interactive conversation</li>
+                <li>Duration: Approximately 5-10 minutes</li>
+            </ul>
+        </div>
+
+        <div class="instruction-section">
+            <h2>What to Expect</h2>
+            <ul>
+                <li>Basic introduction and greeting</li>
+                <li>Questions about your background</li>
+                <li>Discussion about your interests</li>
+                <li>Questions about your career goals</li>
+                <li>Why you're interested in this position</li>
+            </ul>
+        </div>
+
+        <div class="mic-test">
+            <h3>Microphone Test</h3>
+            <p>Please test your microphone before starting the interview</p>
+            <button onclick="testMicrophone()">Test Microphone</button>
+            <p id="micStatus"></p>
+        </div>
+
+        <div class="tips-section">
+            <h3>Tips for Success</h3>
+            <ul>
+                <li>Speak clearly and at a moderate pace</li>
+                <li>Keep your responses concise but informative</li>
+                <li>Listen carefully to each question</li>
+                <li>Be professional and enthusiastic</li>
+                <li>Ensure you're in a quiet environment</li>
+            </ul>
+        </div>
+
+        <div class="instruction-section">
+            <h2>Technical Setup</h2>
+            <ul>
+                <li>Use a modern browser (Chrome recommended)</li>
+                <li>Allow microphone access when prompted</li>
+                <li>Check your internet connection</li>
+                <li>Use headphones if possible</li>
+            </ul>
+        </div>
+
+        <a href="/introduction-test" class="start-button">Start Introduction</a>
+    </div>
+
+    <script>
+        function testMicrophone() {
+            const micStatus = document.getElementById('micStatus');
+            
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                micStatus.textContent = "Speech recognition is not supported in your browser.";
+                micStatus.style.color = "#e74c3c";
+                return;
+            }
+
+            navigator.mediaDevices.getUserMedia({ audio: true })
+                .then(stream => {
+                    micStatus.textContent = "Microphone is working properly!";
+                    micStatus.style.color = "#2ecc71";
+                    stream.getTracks().forEach(track => track.stop());
+                })
+                .catch(err => {
+                    micStatus.textContent = "Error accessing microphone. Please check your settings.";
+                    micStatus.style.color = "#e74c3c";
+                });
+        }
+    </script>
+</body>
+</html> 
