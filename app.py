@@ -724,6 +724,51 @@ def submit_coding():
             "error": str(e)
         })
 
+@app.route("/run-code", methods=["POST"])
+@require_questions
+def run_code():
+    try:
+        data = request.json
+        code = data.get("code", "")
+        language = data.get("language", "python")
+        question_index = data.get("question_index", 0)
+        
+        # Get the current coding question
+        coding_questions = INTERVIEW_QUESTIONS.get("coding", [])
+        if not coding_questions or question_index >= len(coding_questions):
+            return jsonify({
+                "success": False,
+                "error": "Invalid question index"
+            })
+            
+        # Here you would implement code execution logic
+        # For now, we'll return dummy test results
+        test_results = [
+            {
+                "input": "test input 1",
+                "expected_output": "expected output 1",
+                "actual_output": "actual output 1",
+                "passed": True
+            },
+            {
+                "input": "test input 2",
+                "expected_output": "expected output 2",
+                "actual_output": "actual output 2",
+                "passed": False
+            }
+        ]
+        
+        return jsonify({
+            "success": True,
+            "test_results": test_results
+        })
+    except Exception as e:
+        print(f"Error running code: {str(e)}")
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        })
+
 if __name__ == '__main__':
     # Create the uploads directory if it doesn't exist
     if not os.path.exists(app.config['UPLOAD_FOLDER']):

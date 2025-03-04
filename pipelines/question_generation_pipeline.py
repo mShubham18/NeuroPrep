@@ -46,9 +46,13 @@ def question_generation_pipeline(path:str, progress_callback=None)->list:
 
     log_progress("Generating Coding Questions...")
     coding_questions_markdown_list = []
-    for i in range(0,3):
-        log_progress(f"  Generating coding question {i+1}/3...")
+    difficulties = ['Easy', 'Medium', 'Hard']
+    for i, difficulty in enumerate(difficulties):
+        log_progress(f"  Generating {difficulty} coding question {i+1}/3...")
         question = generate_Coding(metrics_dict)
+        # Ensure the question has the correct difficulty
+        if difficulty not in question:
+            question = question.replace("**Difficulty**:", f"**Difficulty**: {difficulty}")
         coding_questions_markdown_list.append(question)
     log_progress("✓ Coding questions generation completed")
 
