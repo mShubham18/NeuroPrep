@@ -1,0 +1,267 @@
+/* Main layout */
+body {
+    font-family: 'Arial', sans-serif;
+    margin: 0;
+    padding: 0;
+    background-color: #f5f5f5;
+    color: #333;
+    height: 100vh;
+    overflow: hidden;
+}
+
+.container {
+    display: flex;
+    height: 100vh;
+    padding: 20px;
+    gap: 20px;
+}
+
+/* Problem section */
+.problem-section {
+    flex: 1;
+    background: white;
+    border-radius: 10px;
+    padding: 20px;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+}
+
+.problem-header {
+    margin-bottom: 20px;
+}
+
+.problem-title {
+    font-size: 24px;
+    margin-bottom: 10px;
+}
+
+.difficulty-badge {
+    display: inline-block;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 14px;
+    margin-left: 10px;
+}
+
+.difficulty-easy {
+    background-color: #2ecc71;
+    color: white;
+}
+
+.difficulty-medium {
+    background-color: #f1c40f;
+    color: black;
+}
+
+.difficulty-hard {
+    background-color: #e74c3c;
+    color: white;
+}
+
+.problem-stats {
+    font-size: 14px;
+    color: #666;
+    margin-top: 10px;
+}
+
+.problem-stats span {
+    margin-right: 20px;
+}
+
+.problem-content {
+    flex: 1;
+    overflow-y: auto;
+    padding-right: 10px;
+}
+
+.problem-content pre {
+    background: #282c34;
+    padding: 15px;
+    border-radius: 5px;
+    overflow-x: auto;
+    margin: 15px 0;
+}
+
+.problem-content code {
+    font-family: 'Consolas', monospace;
+    background: #f8f9fa;
+    padding: 2px 5px;
+    border-radius: 3px;
+}
+
+/* Editor section */
+.editor-section {
+    flex: 1;
+    background: white;
+    border-radius: 10px;
+    padding: 20px;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    display: flex;
+    flex-direction: column;
+}
+
+.editor-toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+    padding: 10px;
+    background: #f8f9fa;
+    border-radius: 5px;
+}
+
+.language-select {
+    padding: 5px 10px;
+    border-radius: 5px;
+    border: 1px solid #ddd;
+    font-size: 14px;
+}
+
+.editor-actions {
+    display: flex;
+    gap: 10px;
+}
+
+.editor-actions button {
+    padding: 5px 10px;
+    border: none;
+    border-radius: 4px;
+    background: #f0f0f0;
+    color: #333;
+    cursor: pointer;
+    font-size: 14px;
+    transition: background-color 0.2s;
+}
+
+.editor-actions button:hover {
+    background: #e0e0e0;
+}
+
+.editor-container {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+
+.CodeMirror {
+    flex: 1;
+    height: auto !important;
+    border: 1px solid #ddd;
+    border-radius: 5px;
+    font-size: 14px;
+}
+
+/* Test cases */
+.test-cases {
+    margin-top: 20px;
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.test-summary {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px;
+    background: #f8f9fa;
+    border-radius: 5px;
+    margin-bottom: 10px;
+}
+
+.test-summary .passed {
+    color: #2ecc71;
+}
+
+.test-summary .failed {
+    color: #e74c3c;
+}
+
+.test-case {
+    margin-bottom: 10px;
+    padding: 10px;
+    border: 1px solid #ddd;
+    border-radius: 5px;
+}
+
+.test-case.passed {
+    border-color: #2ecc71;
+    background-color: #f0fff4;
+}
+
+.test-case.failed {
+    border-color: #e74c3c;
+    background-color: #fff5f5;
+}
+
+.test-case-header {
+    font-weight: bold;
+    margin-bottom: 5px;
+}
+
+.test-case-content {
+    font-family: monospace;
+    white-space: pre-wrap;
+}
+
+/* Controls */
+.controls {
+    margin-top: 20px;
+    display: flex;
+    gap: 10px;
+    justify-content: flex-end;
+}
+
+.controls button {
+    padding: 10px 20px;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 14px;
+    transition: background-color 0.3s;
+}
+
+#runBtn {
+    background-color: #2ecc71;
+    color: white;
+}
+
+#runBtn:hover {
+    background-color: #27ae60;
+}
+
+#submitBtn {
+    background-color: #3498db;
+    color: white;
+}
+
+#submitBtn:hover {
+    background-color: #2980b9;
+}
+
+button:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+/* Scrollbars */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+    background: #888;
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: #555;
+} 

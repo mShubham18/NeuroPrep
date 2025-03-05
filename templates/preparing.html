@@ -333,6 +333,15 @@
                         setupEventSource();
                     }
                 }, delay);
+
+                // Enhanced logging for debugging
+                console.log('EventSource connection status:', eventSource.readyState);
+
+                // Log detailed error information
+                console.error('EventSource error details:', error);
+
+                // Log reconnect attempts
+                console.log(`Reconnect attempt ${reconnectAttempts} with delay ${delay}ms`);
             };
             
             eventSource.onopen = function() {

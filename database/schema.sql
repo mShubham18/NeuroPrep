@@ -78,4 +78,13 @@ CREATE TABLE IF NOT EXISTS speech_metrics (
     clarity_score FLOAT,
     volume_variation FLOAT,
     FOREIGN KEY (session_id) REFERENCES interview_sessions(id)
+);
+
+-- Round completions table
+CREATE TABLE IF NOT EXISTS round_completions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id INTEGER,
+    round_type TEXT NOT NULL,
+    completed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (session_id) REFERENCES interview_sessions(id)
 ); 

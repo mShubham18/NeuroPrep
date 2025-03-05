@@ -197,7 +197,7 @@
             <div class="metrics-grid">
                 <div class="metric-box">
                     <h3>Overall Performance</h3>
-                    <div class="metric-value">{{ (aptitude_score.overall_score + technical_score.overall_score) / 2 |round|int }}%</div>
+                    <div class="metric-value">{{ ((aptitude_score.overall_score + technical_score.overall_score + coding_score.overall_score) / 3)|round|int }}%</div>
                 </div>
                 <div class="metric-box">
                     <h3>Technical Proficiency</h3>
@@ -206,6 +206,10 @@
                 <div class="metric-box">
                     <h3>Aptitude Rating</h3>
                     <div class="metric-value">{{ aptitude_score.overall_score|round|int }}%</div>
+                </div>
+                <div class="metric-box">
+                    <h3>Coding Skills</h3>
+                    <div class="metric-value">{{ coding_score.overall_score|round|int }}%</div>
                 </div>
             </div>
             
@@ -227,6 +231,9 @@
                 </div>
                 <div class="chart-wrapper">
                     <canvas id="technicalChart"></canvas>
+                </div>
+                <div class="chart-wrapper">
+                    <canvas id="codingChart"></canvas>
                 </div>
             </div>
 
@@ -254,6 +261,24 @@
                     <span>{{ score|round|int }}%</span>
                 </div>
                 {% endfor %}
+            </div>
+
+            <div class="category-breakdown">
+                <h2>Coding Performance</h2>
+                <div class="category-item">
+                    <span>Overall Score</span>
+                    <div class="progress-bar">
+                        <div class="progress-fill" style="width: {{ coding_score.overall_score }}%"></div>
+                    </div>
+                    <span>{{ coding_score.overall_score|round|int }}%</span>
+                </div>
+                <div class="category-item">
+                    <span>Correct Solutions</span>
+                    <div class="progress-bar">
+                        <div class="progress-fill" style="width: {{ (coding_score.correct_answers / coding_score.total_questions * 100) if coding_score.total_questions > 0 else 0 }}%"></div>
+                    </div>
+                    <span>{{ coding_score.correct_answers }}/{{ coding_score.total_questions }}</span>
+                </div>
             </div>
         </div>
 
@@ -358,6 +383,33 @@
                     backgroundColor: 'rgba(76, 175, 80, 0.2)',
                     borderColor: 'rgba(76, 175, 80, 1)',
                     pointBackgroundColor: 'rgba(76, 175, 80, 1)',
+                }]
+            },
+            options: {
+                scales: {
+                    r: {
+                        beginAtZero: true,
+                        max: 100
+                    }
+                }
+            }
+        });
+
+        // Coding Chart
+        const codingCtx = document.getElementById('codingChart').getContext('2d');
+        new Chart(codingCtx, {
+            type: 'radar',
+            data: {
+                labels: ['Overall Score', 'Correct Solutions'],
+                datasets: [{
+                    label: 'Coding Performance',
+                    data: [
+                        {{ coding_score.overall_score|round|int }},
+                        {{ (coding_score.correct_answers / coding_score.total_questions * 100) if coding_score.total_questions > 0 else 0|round|int }}
+                    ],
+                    backgroundColor: 'rgba(153, 102, 255, 0.2)',
+                    borderColor: 'rgba(153, 102, 255, 1)',
+                    pointBackgroundColor: 'rgba(153, 102, 255, 1)',
                 }]
             },
             options: {

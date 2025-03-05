@@ -7,6 +7,7 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/theme/monokai.min.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.24.1/themes/prism.min.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/coding.css') }}">
     <style>
         body {
             font-family: 'Arial', sans-serif;
@@ -97,12 +98,22 @@
             border-radius: 5px;
             max-height: 200px;
             overflow-y: auto;
+            border: 1px solid #ddd;
         }
         .test-case {
             margin-bottom: 10px;
             padding: 10px;
             border: 1px solid #ddd;
             border-radius: 5px;
+            background-color: #f8f9fa;
+            color: #333;
+            font-family: monospace;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            -webkit-user-select: text;
+            -moz-user-select: text;
+            -ms-user-select: text;
+            user-select: text;
         }
         .test-case.passed {
             border-color: #2ecc71;
@@ -111,6 +122,29 @@
         .test-case.failed {
             border-color: #e74c3c;
             background-color: #fff5f5;
+        }
+        .test-case-content {
+            margin-top: 5px;
+            padding: 5px;
+            background-color: #fff;
+            border-radius: 3px;
+            font-family: monospace;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            color: #333;
+            -webkit-user-select: text;
+            -moz-user-select: text;
+            -ms-user-select: text;
+            user-select: text;
+        }
+        .test-case-header {
+            font-weight: bold;
+            margin-bottom: 5px;
+            color: #333;
+            -webkit-user-select: text;
+            -moz-user-select: text;
+            -ms-user-select: text;
+            user-select: text;
         }
         .problem-header {
             margin-bottom: 20px;
@@ -239,343 +273,457 @@
         .test-summary .failed {
             color: #e74c3c;
         }
+        .problem-title {
+            font-size: 24px;
+            margin-bottom: 10px;
+        }
+        .problem-difficulty {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 14px;
+            margin-bottom: 10px;
+        }
+        .problem-stats {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 20px;
+            font-size: 14px;
+        }
+        .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+        .loading-spinner {
+            width: 50px;
+            height: 50px;
+            border: 5px solid #f3f3f3;
+            border-top: 5px solid #3498db;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .loading-message {
+            color: white;
+            margin-top: 20px;
+            font-size: 18px;
+        }
+        .error-message {
+            background: #fff5f5;
+            color: #e74c3c;
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+            display: none;
+        }
+        .success-message {
+            background: #f0fff4;
+            color: #2ecc71;
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+            display: none;
+        }
+        .keyboard-shortcuts {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 10px;
+            border-radius: 5px;
+            font-size: 12px;
+            display: none;
+        }
+        .keyboard-shortcuts.show {
+            display: block;
+        }
+        .keyboard-shortcut {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 2px 5px;
+            border-radius: 3px;
+            margin: 0 2px;
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="problem-section">
             <div class="problem-header">
-                <h1>Coding Round</h1>
-                <div class="timer" id="timer">Time remaining: <span>00:00</span></div>
-                <div class="progress">
-                    Question <span id="currentQuestion">1</span> of <span id="totalQuestions">0</span>
+                <h1 class="problem-title" id="problemTitle"></h1>
+                <span class="difficulty-badge" id="difficultyBadge"></span>
+                <div class="problem-stats">
+                    <span id="acceptanceRate"></span>
+                    <span id="submissions"></span>
                 </div>
             </div>
-            <div class="problem-content" id="problemDescription">
-                <!-- Problem description will be rendered here -->
-            </div>
+            <div class="problem-content" id="problemContent"></div>
         </div>
-        
         <div class="editor-section">
             <div class="editor-toolbar">
-                <div class="language-select">
-                    <label for="language-select">Language:</label>
-                    <select id="language-select">
-                        <option value="python">Python</option>
-                        <option value="javascript">JavaScript</option>
-                        <option value="java">Java</option>
-                    </select>
-                </div>
+                <select id="languageSelect" class="language-select">
+                    <option value="python">Python</option>
+                    <option value="javascript">JavaScript</option>
+                    <option value="java">Java</option>
+                </select>
                 <div class="editor-actions">
-                    <button id="resetBtn">Reset Code</button>
-                    <button id="formatBtn">Format Code</button>
-                </div>
-                <div class="keyboard-shortcuts">
-                    <span class="keyboard-shortcut">Ctrl+Enter</span> Run
-                    <span class="keyboard-shortcut">Ctrl+S</span> Submit
+                    <button onclick="resetCode()">Reset Code</button>
+                    <button onclick="formatCode()">Format Code</button>
                 </div>
             </div>
             <div class="editor-container">
                 <textarea id="codeEditor"></textarea>
             </div>
             <div class="test-cases" id="testCases">
-                <!-- Test cases will be displayed here -->
+                <div class="test-summary" id="testSummary" style="display: none;">
+                    <span>Test Results:</span>
+                    <span class="passed" id="passedTests">0 passed</span>
+                    <span class="failed" id="failedTests">0 failed</span>
+                </div>
+                <div id="testResults"></div>
             </div>
             <div class="controls">
-                <button id="runBtn">Run Code</button>
-                <button id="submitBtn">Submit</button>
+                <button id="runBtn" onclick="runCode()">Run Code</button>
+                <button id="submitBtn" onclick="submitCode()">Submit</button>
             </div>
         </div>
+    </div>
+
+    <div class="loading-overlay" id="loadingOverlay">
+        <div class="loading-content">
+            <div class="loading-spinner"></div>
+            <div class="loading-message" id="loadingMessage">Processing...</div>
+        </div>
+    </div>
+    <div class="error-message" id="errorMessage"></div>
+    <div class="success-message" id="successMessage"></div>
+    <div class="keyboard-shortcuts" id="keyboardShortcuts">
+        <div>Keyboard Shortcuts:</div>
+        <span class="keyboard-shortcut">Ctrl+S</span> Save
+        <span class="keyboard-shortcut">Ctrl+R</span> Run
+        <span class="keyboard-shortcut">Ctrl+Enter</span> Submit
+        <span class="keyboard-shortcut">Ctrl+F</span> Format
+        <span class="keyboard-shortcut">Esc</span> Close
     </div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/python/python.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/javascript/javascript.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/clike/clike.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/2.1.3/marked.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/4.0.2/marked.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.24.1/prism.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.24.1/components/prism-python.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.24.1/components/prism-javascript.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.24.1/components/prism-java.min.js"></script>
-    <script>
-        let currentQuestionIndex = 0;
-        let questions = [];
-        let timeLimit = 60 * 60; // 60 minutes in seconds
-        let timer;
-        let editor;
-        let defaultCodes = {
-            'python': '# Write your solution here\n\ndef solution():\n    pass\n',
-            'javascript': '// Write your solution here\n\nfunction solution() {\n    \n}\n',
-            'java': '// Write your solution here\n\npublic class Solution {\n    public static void main(String[] args) {\n        \n    }\n}\n'
-        };
 
-        // Enhanced CodeMirror initialization
-        function initializeEditor(language) {
-            if (editor) {
-                editor.toTextArea();
-            }
-            
-            const modeMap = {
-                'python': 'python',
-                'javascript': 'javascript',
-                'java': 'text/x-java'
-            };
-            
+    <script>
+        let editor;
+        let currentQuestion;
+        let starterCode = {};
+        let autoSaveInterval;
+        let lastSavedCode = '';
+
+        // Initialize CodeMirror editor
+        document.addEventListener('DOMContentLoaded', function() {
             editor = CodeMirror.fromTextArea(document.getElementById('codeEditor'), {
-                mode: modeMap[language],
+                mode: 'python',
                 theme: 'monokai',
                 lineNumbers: true,
                 autoCloseBrackets: true,
                 matchBrackets: true,
                 indentUnit: 4,
                 tabSize: 4,
-                indentWithTabs: false,
                 lineWrapping: true,
                 viewportMargin: Infinity,
                 extraKeys: {
-                    "Ctrl-Enter": function(cm) {
-                        document.getElementById('runBtn').click();
-                    },
-                    "Ctrl-S": function(cm) {
-                        document.getElementById('submitBtn').click();
-                    }
+                    "Ctrl-S": function(cm) { saveCode(); },
+                    "Ctrl-R": function(cm) { runCode(); },
+                    "Ctrl-Enter": function(cm) { submitCode(); },
+                    "Ctrl-F": function(cm) { formatCode(); },
+                    "Esc": function(cm) { toggleKeyboardShortcuts(); }
                 }
             });
 
-            editor.setValue(defaultCodes[language]);
-        }
+            // Load first question
+            loadQuestion();
 
-        // Enhanced question display
-        function showQuestion(index) {
-            if (index >= 0 && index < questions.length) {
-                currentQuestionIndex = index;
-                const question = questions[index];
-                
-                document.getElementById('currentQuestion').textContent = index + 1;
-                
-                // Directly render the question content using marked
-                const problemDescription = document.getElementById('problemDescription');
-                problemDescription.innerHTML = marked.parse(question);
-                
-                // Add copy buttons to code blocks after rendering
-                problemDescription.querySelectorAll('pre code').forEach((codeBlock) => {
-                    const pre = codeBlock.parentElement;
-                    const copyButton = document.createElement('button');
-                    copyButton.className = 'copy-button';
-                    copyButton.textContent = 'Copy';
-                    copyButton.onclick = () => copyCode(codeBlock, copyButton);
-                    pre.appendChild(copyButton);
-                });
-                
-                // Initialize editor with default language
-                initializeEditor('python');
-                
-                // Clear test cases
-                document.getElementById('testCases').innerHTML = '';
-                
-                // Highlight code blocks
-                Prism.highlightAll();
-            }
-        }
-
-        // Process question content to add copy buttons
-        function processQuestionContent(content) {
-            const tempDiv = document.createElement('div');
-            tempDiv.innerHTML = marked.parse(content);
-            
-            // Add copy buttons to code blocks
-            tempDiv.querySelectorAll('pre code').forEach((codeBlock) => {
-                const pre = codeBlock.parentElement;
-                const copyButton = document.createElement('button');
-                copyButton.className = 'copy-button';
-                copyButton.textContent = 'Copy';
-                copyButton.onclick = () => copyCode(codeBlock, copyButton);
-                pre.appendChild(copyButton);
+            // Set up language change handler
+            document.getElementById('languageSelect').addEventListener('change', function(e) {
+                const language = e.target.value;
+                updateEditorMode(language);
+                resetCode();
             });
-            
-            return tempDiv.innerHTML;
-        }
 
-        // Copy code functionality
-        function copyCode(codeBlock, button) {
-            const text = codeBlock.textContent;
-            navigator.clipboard.writeText(text).then(() => {
-                button.textContent = 'Copied!';
-                button.classList.add('copied');
-                setTimeout(() => {
-                    button.textContent = 'Copy';
-                    button.classList.remove('copied');
-                }, 2000);
+            // Set up auto-save
+            setupAutoSave();
+
+            // Set up keyboard shortcuts help
+            document.addEventListener('keydown', function(e) {
+                if (e.key === '?') {
+                    toggleKeyboardShortcuts();
+                }
             });
+        });
+
+        function setupAutoSave() {
+            autoSaveInterval = setInterval(() => {
+                const currentCode = editor.getValue();
+                if (currentCode !== lastSavedCode) {
+                    saveCode();
+                    lastSavedCode = currentCode;
+                }
+            }, 30000); // Auto-save every 30 seconds
         }
 
-        // Format code functionality
+        function saveCode() {
+            const code = editor.getValue();
+            localStorage.setItem('lastSavedCode', code);
+            showMessage('Code saved successfully', 'success');
+        }
+
+        function showMessage(message, type) {
+            const messageElement = document.getElementById(type === 'error' ? 'errorMessage' : 'successMessage');
+            messageElement.textContent = message;
+            messageElement.style.display = 'block';
+            setTimeout(() => {
+                messageElement.style.display = 'none';
+            }, 3000);
+        }
+
+        function showLoading(message = 'Processing...') {
+            document.getElementById('loadingMessage').textContent = message;
+            document.getElementById('loadingOverlay').style.display = 'flex';
+        }
+
+        function hideLoading() {
+            document.getElementById('loadingOverlay').style.display = 'none';
+        }
+
+        function toggleKeyboardShortcuts() {
+            const shortcuts = document.getElementById('keyboardShortcuts');
+            shortcuts.classList.toggle('show');
+        }
+
         function formatCode() {
-            if (editor) {
-                const mode = editor.getModeAt(editor.getCursor());
-                const code = editor.getValue();
-                // Basic formatting (can be enhanced with proper formatters)
-                const formatted = code.split('\n').map(line => line.trim()).join('\n');
-                editor.setValue(formatted);
-            }
+            const language = document.getElementById('languageSelect').value;
+            const code = editor.getValue();
+            
+            showLoading('Formatting code...');
+            
+            fetch('/format-code', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    code: code,
+                    language: language
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    editor.setValue(data.formatted_code);
+                    showMessage('Code formatted successfully', 'success');
+                } else {
+                    showMessage('Error formatting code: ' + data.error, 'error');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                showMessage('Failed to format code', 'error');
+            })
+            .finally(() => {
+                hideLoading();
+            });
         }
 
-        // Reset code functionality
-        function resetCode() {
-            if (editor) {
-                const language = document.getElementById('language-select').value;
-                editor.setValue(defaultCodes[language]);
-            }
+        function runCode() {
+            const language = document.getElementById('languageSelect').value;
+            const code = editor.getValue();
+            
+            showLoading('Running code...');
+            
+            // Disable buttons during execution
+            document.getElementById('runBtn').disabled = true;
+            document.getElementById('submitBtn').disabled = true;
+            
+            fetch('/run-code', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    code: code,
+                    language: language,
+                    question_id: currentQuestion.id
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    displayTestResults(data.results);
+                } else {
+                    showMessage('Error running code: ' + data.error, 'error');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                showMessage('Failed to run code', 'error');
+            })
+            .finally(() => {
+                // Re-enable buttons
+                document.getElementById('runBtn').disabled = false;
+                document.getElementById('submitBtn').disabled = false;
+                hideLoading();
+            });
         }
 
-        // Enhanced test results display
+        function submitCode() {
+            const language = document.getElementById('languageSelect').value;
+            const code = editor.getValue();
+            
+            showLoading('Submitting code...');
+            
+            // Disable buttons during submission
+            document.getElementById('runBtn').disabled = true;
+            document.getElementById('submitBtn').disabled = true;
+            
+            fetch('/submit-coding', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    code: code,
+                    language: language,
+                    question_id: currentQuestion.id
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    if (data.completed) {
+                        window.location.href = '/hr';
+                    } else {
+                        loadQuestion();
+                    }
+                } else {
+                    showMessage('Error submitting code: ' + data.error, 'error');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                showMessage('Failed to submit code', 'error');
+            })
+            .finally(() => {
+                // Re-enable buttons
+                document.getElementById('runBtn').disabled = false;
+                document.getElementById('submitBtn').disabled = false;
+                hideLoading();
+            });
+        }
+
         function displayTestResults(results) {
-            const testCasesDiv = document.getElementById('testCases');
-            testCasesDiv.innerHTML = '';
+            const testResultsDiv = document.getElementById('testResults');
+            const testSummary = document.getElementById('testSummary');
+            testResultsDiv.innerHTML = '';
             
-            // Add test summary
-            const passed = results.filter(r => r.passed).length;
-            const total = results.length;
-            const summary = document.createElement('div');
-            summary.className = 'test-summary';
-            summary.innerHTML = `
-                <span>Test Results: <span class="passed">${passed}</span> passed, <span class="failed">${total - passed}</span> failed</span>
-            `;
-            testCasesDiv.appendChild(summary);
+            let passedCount = 0;
+            let failedCount = 0;
             
-            // Display individual test cases
             results.forEach((result, index) => {
                 const testCase = document.createElement('div');
                 testCase.className = `test-case ${result.passed ? 'passed' : 'failed'}`;
-                testCase.innerHTML = `
-                    <strong>Test Case ${index + 1}:</strong> ${result.passed ? 'Passed' : 'Failed'}<br>
-                    Input: ${result.input}<br>
-                    Expected Output: ${result.expected_output}<br>
-                    Your Output: ${result.actual_output}
-                `;
-                testCasesDiv.appendChild(testCase);
-            });
-        }
-
-        // Add event listeners for new buttons
-        document.getElementById('formatBtn').addEventListener('click', formatCode);
-        document.getElementById('resetBtn').addEventListener('click', resetCode);
-
-        // Initialize the coding round
-        async function initializeCoding() {
-            try {
-                const response = await fetch('/get-coding-questions');
-                const data = await response.json();
                 
-                if (data.success) {
-                    questions = data.questions;
-                    document.getElementById('totalQuestions').textContent = questions.length;
-                    
-                    // Log the questions for debugging
-                    console.log('Received questions:', questions);
-                    
-                    if (questions && questions.length > 0) {
-                        showQuestion(0);
-                        startTimer();
-                    } else {
-                        console.error('No questions received');
-                        document.getElementById('problemDescription').innerHTML = 
-                            '<p>Error: No questions available. Please try refreshing the page.</p>';
-                    }
+                const header = document.createElement('div');
+                header.className = 'test-case-header';
+                header.textContent = `Test Case ${index + 1}: ${result.passed ? 'Passed' : 'Failed'}`;
+                
+                const content = document.createElement('div');
+                content.className = 'test-case-content';
+                if (result.passed) {
+                    content.textContent = `Output: ${result.output}`;
+                    passedCount++;
                 } else {
-                    console.error('Failed to fetch questions:', data.error);
-                    document.getElementById('problemDescription').innerHTML = 
-                        '<p>Error: Failed to load questions. Please try refreshing the page.</p>';
+                    content.textContent = `Error: ${result.error}`;
+                    failedCount++;
                 }
-            } catch (error) {
-                console.error('Error initializing coding round:', error);
-                document.getElementById('problemDescription').innerHTML = 
-                    '<p>Error: Failed to load questions. Please try refreshing the page.</p>';
-            }
-        }
-
-        function updateTimerDisplay(seconds) {
-            const minutes = Math.floor(seconds / 60);
-            const remainingSeconds = seconds % 60;
-            document.querySelector('#timer span').textContent = 
-                `${String(minutes).padStart(2, '0')}:${String(remainingSeconds).padStart(2, '0')}`;
-        }
-
-        function startTimer() {
-            let timeRemaining = timeLimit;
-            updateTimerDisplay(timeRemaining);
+                
+                testCase.appendChild(header);
+                testCase.appendChild(content);
+                testResultsDiv.appendChild(testCase);
+            });
             
-            timer = setInterval(() => {
-                timeRemaining--;
-                updateTimerDisplay(timeRemaining);
-                
-                if (timeRemaining <= 0) {
-                    clearInterval(timer);
-                    window.location.href = '/hr'; // Auto-submit and move to HR round
-                }
-            }, 1000);
+            // Update summary
+            document.getElementById('passedTests').textContent = `${passedCount} passed`;
+            document.getElementById('failedTests').textContent = `${failedCount} failed`;
+            testSummary.style.display = 'flex';
         }
 
-        // Event Listeners
-        document.getElementById('language-select').addEventListener('change', (e) => {
-            initializeEditor(e.target.value);
-        });
+        function updateEditorMode(language) {
+            const modeMap = {
+                'python': 'python',
+                'javascript': 'javascript',
+                'java': 'text/x-java'
+            };
+            editor.setOption('mode', modeMap[language]);
+        }
 
-        document.getElementById('runBtn').addEventListener('click', async () => {
-            const code = editor.getValue();
-            const language = document.getElementById('language-select').value;
-            
-            try {
-                const response = await fetch('/run-code', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({
-                        code: code,
-                        language: language,
-                        question_index: currentQuestionIndex
-                    })
-                });
-                
-                const data = await response.json();
-                if (data.success) {
-                    displayTestResults(data.test_results);
-                }
-            } catch (error) {
-                console.error('Error running code:', error);
-            }
-        });
-
-        document.getElementById('submitBtn').addEventListener('click', async () => {
-            try {
-                const response = await fetch('/submit-coding', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({
-                        code: editor.getValue(),
-                        question_index: currentQuestionIndex,
-                        language: document.getElementById('language-select').value
-                    })
-                });
-                
-                const data = await response.json();
-                if (data.success) {
-                    if (data.next_question !== null) {
-                        showQuestion(data.next_question);
+        function loadQuestion() {
+            fetch('/get-coding-question')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        currentQuestion = data.question;
+                        starterCode = data.question.starter_code;
+                        
+                        // Update UI
+                        document.getElementById('problemTitle').textContent = data.question.title;
+                        document.getElementById('difficultyBadge').textContent = data.question.difficulty;
+                        document.getElementById('difficultyBadge').className = `difficulty-badge difficulty-${data.question.difficulty.toLowerCase()}`;
+                        
+                        // Update stats
+                        document.getElementById('acceptanceRate').textContent = `Acceptance Rate: ${Math.round(data.question.acceptance_rate)}%`;
+                        document.getElementById('submissions').textContent = `Total Submissions: ${data.question.total_submissions.toLocaleString()}`;
+                        
+                        // Render problem content with Markdown
+                        document.getElementById('problemContent').innerHTML = marked.parse(data.question.content);
+                        
+                        // Reset editor with starter code
+                        resetCode();
+                        
+                        // Clear test results
+                        document.getElementById('testResults').innerHTML = '';
+                        document.getElementById('testSummary').style.display = 'none';
+                        
+                        // Highlight code blocks
+                        Prism.highlightAll();
                     } else {
-                        window.location.href = '/hr'; // Move to HR round
+                        alert('Failed to load question: ' + data.error);
                     }
-                }
-            } catch (error) {
-                console.error('Error submitting code:', error);
-            }
-        });
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert('Failed to load question');
+                });
+        }
 
-        // Initialize when page loads
-        initializeCoding();
+        function resetCode() {
+            const language = document.getElementById('languageSelect').value;
+            editor.setValue(starterCode[language] || '');
+        }
     </script>
 </body>
 </html> 
