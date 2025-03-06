@@ -18,6 +18,7 @@ import time
 from services.validation_service import ValidationService
 from services.code_validation import CodeValidationService
 from services.question_service import QuestionService
+import logging
 
 load_dotenv()
 
@@ -43,6 +44,10 @@ speech_analyzer = None  # Will be initialized per session
 # Global Variable (Initializes only when accessed)
 INTERVIEW_QUESTIONS = {}
 progress_queues = {}
+
+# Configure logging
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
 
 # Function to check if questions are loaded
 def questions_are_loaded():
@@ -229,60 +234,66 @@ def progress_stream():
 @app.route("/generate-questions")
 def generate_questions():
     try:
-        # Initialize user session if not exists
-        if 'user_id' not in session:
-            session['user_id'] = str(uuid.uuid4())
-            
+        # Get user ID from session
         user_id = session.get('user_id')
+        if not user_id:
+            return jsonify({'success': False, 'error': 'No active session'})
+            
+        # Get resume path from session
+        resume_path = session.get('resume_path')
+        if not resume_path:
+            return jsonify({'success': False, 'error': 'No resume uploaded'})
+            
+        # Initialize progress queue for this user
         if user_id not in progress_queues:
             progress_queues[user_id] = queue.Queue()
             
-        # Send initial progress message
-        progress_queues[user_id].put("Starting question generation...")
+        # Initialize question service for LeetCode integration
+        question_service = QuestionService()
         
-        # Get the resume path from session
-        resume_path = session.get('resume_path')
-        if not resume_path:
-            progress_queues[user_id].put("ERROR:No resume found")
-            return jsonify({'success': False, 'error': 'No resume found'})
+        # Get coding questions from LeetCode first
+        progress_queues[user_id].put("Fetching coding questions from LeetCode...")
+        coding_questions = question_service.get_questions_by_difficulty([], 'beginner')
+        
+        if not coding_questions:
+            progress_queues[user_id].put("ERROR:Failed to fetch coding questions")
+            return jsonify({'success': False, 'error': 'Failed to fetch coding questions'})
             
-        # Generate all questions using the pipeline
-        try:
-            intro_questions, aptitude_questions, technical_questions, coding_questions, hr_questions = question_generation_pipeline(
-                resume_path,
-                progress_callback=lambda msg: progress_queues[user_id].put(msg)
-            )
-            
-            # Store all questions in both session and global variable
-            session['introduction_questions'] = intro_questions
-            session['aptitude_questions'] = aptitude_questions
-            session['technical_questions'] = technical_questions
-            session['coding_questions'] = coding_questions
-            session['hr_questions'] = hr_questions
-            
-            INTERVIEW_QUESTIONS['introduction'] = intro_questions
-            INTERVIEW_QUESTIONS['aptitude'] = aptitude_questions
-            INTERVIEW_QUESTIONS['technical'] = technical_questions
-            INTERVIEW_QUESTIONS['coding'] = coding_questions
-            INTERVIEW_QUESTIONS['hr'] = hr_questions
-            
-            progress_queues[user_id].put("Questions generated successfully")
-            
-            # Send redirect message
-            progress_queues[user_id].put("REDIRECT:/introduction")
-            print(f"Sent redirect message for user {user_id}")  # Debug log
-            
-            return jsonify({'success': True})
-            
-        except Exception as e:
-            print(f"Error in question generation pipeline: {str(e)}")
-            progress_queues[user_id].put(f"ERROR:{str(e)}")
-            return jsonify({'success': False, 'error': str(e)})
-            
+        # Log the fetched questions for debugging
+        print(f"Fetched {len(coding_questions)} coding questions")
+        for q in coding_questions:
+            print(f"Question: {q['title']}, Difficulty: {q['difficulty']}")
+        
+        # Generate other questions using the pipeline
+        progress_queues[user_id].put("Generating other questions...")
+        intro_questions, aptitude_questions, technical_questions, _, hr_questions = question_generation_pipeline(
+            resume_path,
+            progress_callback=lambda msg: progress_queues[user_id].put(msg)
+        )
+        
+        # Store all questions in both session and global variable
+        session['introduction_questions'] = intro_questions
+        session['aptitude_questions'] = aptitude_questions
+        session['technical_questions'] = technical_questions
+        session['coding_questions'] = coding_questions
+        session['hr_questions'] = hr_questions
+        
+        INTERVIEW_QUESTIONS['introduction'] = intro_questions
+        INTERVIEW_QUESTIONS['aptitude'] = aptitude_questions
+        INTERVIEW_QUESTIONS['technical'] = technical_questions
+        INTERVIEW_QUESTIONS['coding'] = coding_questions
+        INTERVIEW_QUESTIONS['hr'] = hr_questions
+        
+        progress_queues[user_id].put("Questions generated successfully")
+        
+        # Send redirect message
+        progress_queues[user_id].put("REDIRECT:/introduction")
+        print(f"Sent redirect message for user {user_id}")  # Debug log
+        
+        return jsonify({'success': True})
+        
     except Exception as e:
-        print(f"Error generating questions: {str(e)}")
-        if user_id in progress_queues:
-            progress_queues[user_id].put(f"ERROR:{str(e)}")
+        print(f"Error in generate_questions: {str(e)}")
         return jsonify({'success': False, 'error': str(e)})
 
 @app.route("/introduction")
@@ -925,7 +936,7 @@ def run_code():
             })
             
         current_question = questions[current_index]
-        if current_question['id'] != question_id:
+        if str(current_question['id']) != str(question_id):
             return jsonify({
                 'success': False,
                 'error': 'Invalid question ID'
@@ -941,13 +952,23 @@ def run_code():
                 'error': 'Code validation failed'
             })
             
+        # Format results for frontend
+        formatted_results = []
+        for result in results.get('results', []):
+            formatted_result = {
+                'passed': result.get('passed', False),
+                'output': result.get('output', ''),
+                'error': result.get('error', '')
+            }
+            formatted_results.append(formatted_result)
+            
         return jsonify({
             'success': True,
-            'results': results.get('results', [])
+            'results': formatted_results
         })
-        
+            
     except Exception as e:
-        print(f"Error in run_code: {str(e)}")
+        logger.error(f"Error running code: {str(e)}")
         return jsonify({
             'success': False,
             'error': str(e)

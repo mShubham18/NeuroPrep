@@ -22,129 +22,73 @@
             display: flex;
             height: 100vh;
             padding: 20px;
-            gap: 20px;
+            box-sizing: border-box;
         }
-        .problem-section {
+        .question-panel {
             flex: 1;
-            background: white;
-            border-radius: 10px;
             padding: 20px;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
             overflow-y: auto;
-            display: flex;
-            flex-direction: column;
+            background: #f5f5f5;
+            border-radius: 8px;
+            margin-right: 20px;
         }
-        .editor-section {
+        .code-panel {
             flex: 1;
-            background: white;
-            border-radius: 10px;
-            padding: 20px;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
             display: flex;
             flex-direction: column;
         }
         .CodeMirror {
-            flex: 1;
-            height: 100% !important;
-            border: 1px solid #ddd;
-            border-radius: 5px;
+            height: 70vh !important;
             font-size: 14px;
+            border-radius: 8px;
         }
         .controls {
             margin-top: 20px;
             display: flex;
             gap: 10px;
-            justify-content: flex-end;
         }
-        button {
+        .button {
             padding: 10px 20px;
             border: none;
-            border-radius: 5px;
+            border-radius: 4px;
             cursor: pointer;
-            font-size: 1em;
-            transition: background-color 0.3s;
+            font-size: 14px;
         }
-        #runBtn {
-            background-color: #2ecc71;
+        .run-button {
+            background: #4CAF50;
             color: white;
         }
-        #runBtn:hover {
-            background-color: #27ae60;
-        }
-        #submitBtn {
-            background-color: #3498db;
+        .submit-button {
+            background: #2196F3;
             color: white;
         }
-        #submitBtn:hover {
-            background-color: #2980b9;
+        .results {
+            margin-top: 20px;
+            padding: 10px;
+            border-radius: 4px;
         }
-        .timer {
-            text-align: right;
-            margin-bottom: 10px;
-            color: #666;
+        .success {
+            background: #E8F5E9;
+            color: #2E7D32;
+        }
+        .error {
+            background: #FFEBEE;
+            color: #C62828;
         }
         .language-select {
+            padding: 8px;
             margin-bottom: 10px;
-        }
-        select {
-            padding: 5px 10px;
-            border-radius: 5px;
+            border-radius: 4px;
             border: 1px solid #ddd;
         }
-        .test-cases {
-            margin-top: 20px;
-            padding: 15px;
-            background: #f8f9fa;
-            border-radius: 5px;
-            max-height: 200px;
-            overflow-y: auto;
-            border: 1px solid #ddd;
-        }
-        .test-case {
-            margin-bottom: 10px;
+        pre {
+            background: #f8f8f8;
             padding: 10px;
-            border: 1px solid #ddd;
-            border-radius: 5px;
-            background-color: #f8f9fa;
-            color: #333;
+            border-radius: 4px;
+            overflow-x: auto;
+        }
+        code {
             font-family: monospace;
-            white-space: pre-wrap;
-            word-wrap: break-word;
-            -webkit-user-select: text;
-            -moz-user-select: text;
-            -ms-user-select: text;
-            user-select: text;
-        }
-        .test-case.passed {
-            border-color: #2ecc71;
-            background-color: #f0fff4;
-        }
-        .test-case.failed {
-            border-color: #e74c3c;
-            background-color: #fff5f5;
-        }
-        .test-case-content {
-            margin-top: 5px;
-            padding: 5px;
-            background-color: #fff;
-            border-radius: 3px;
-            font-family: monospace;
-            white-space: pre-wrap;
-            word-wrap: break-word;
-            color: #333;
-            -webkit-user-select: text;
-            -moz-user-select: text;
-            -ms-user-select: text;
-            user-select: text;
-        }
-        .test-case-header {
-            font-weight: bold;
-            margin-bottom: 5px;
-            color: #333;
-            -webkit-user-select: text;
-            -moz-user-select: text;
-            -ms-user-select: text;
-            user-select: text;
         }
         .problem-header {
             margin-bottom: 20px;
@@ -355,48 +299,65 @@
             border-radius: 3px;
             margin: 0 2px;
         }
+        .test-case {
+            margin: 10px 0;
+            padding: 10px;
+            border-radius: 4px;
+            font-family: monospace;
+        }
+        .test-case.success {
+            background: #E8F5E9;
+            color: #2E7D32;
+        }
+        .test-case.error {
+            background: #FFEBEE;
+            color: #C62828;
+        }
+        .test-case strong {
+            font-weight: bold;
+        }
+        .test-case .success {
+            color: #2E7D32;
+        }
+        .test-case .error {
+            color: #C62828;
+        }
+        .test-summary {
+            margin-bottom: 20px;
+            padding: 10px;
+            background: #f8f9fa;
+            border-radius: 4px;
+            font-weight: bold;
+        }
+        .test-summary .passed {
+            color: #2E7D32;
+        }
+        .test-summary .failed {
+            color: #C62828;
+        }
     </style>
 </head>
 <body>
     <div class="container">
-        <div class="problem-section">
-            <div class="problem-header">
-                <h1 class="problem-title" id="problemTitle"></h1>
-                <span class="difficulty-badge" id="difficultyBadge"></span>
-                <div class="problem-stats">
-                    <span id="acceptanceRate"></span>
-                    <span id="submissions"></span>
-                </div>
-            </div>
-            <div class="problem-content" id="problemContent"></div>
+        <div class="question-panel">
+            <h2 id="question-title"></h2>
+            <div id="question-difficulty"></div>
+            <div id="question-content"></div>
         </div>
-        <div class="editor-section">
-            <div class="editor-toolbar">
-                <select id="languageSelect" class="language-select">
-                    <option value="python">Python</option>
-                    <option value="javascript">JavaScript</option>
-                    <option value="java">Java</option>
-                </select>
-                <div class="editor-actions">
-                    <button onclick="resetCode()">Reset Code</button>
-                    <button onclick="formatCode()">Format Code</button>
-                </div>
-            </div>
-            <div class="editor-container">
-                <textarea id="codeEditor"></textarea>
-            </div>
-            <div class="test-cases" id="testCases">
-                <div class="test-summary" id="testSummary" style="display: none;">
-                    <span>Test Results:</span>
-                    <span class="passed" id="passedTests">0 passed</span>
-                    <span class="failed" id="failedTests">0 failed</span>
-                </div>
-                <div id="testResults"></div>
-            </div>
+        <div class="code-panel">
+            <select id="language-select" class="language-select">
+                <option value="python">Python</option>
+                <option value="javascript">JavaScript</option>
+                <option value="java">Java</option>
+                <option value="cpp">C++</option>
+                <option value="c">C</option>
+            </select>
+            <textarea id="code-editor"></textarea>
             <div class="controls">
-                <button id="runBtn" onclick="runCode()">Run Code</button>
-                <button id="submitBtn" onclick="submitCode()">Submit</button>
+                <button class="button run-button" onclick="runCode()">Run Code</button>
+                <button class="button submit-button" onclick="submitCode()">Submit</button>
             </div>
+            <div id="results" class="results"></div>
         </div>
     </div>
 
@@ -429,14 +390,13 @@
 
     <script>
         let editor;
-        let currentQuestion;
-        let starterCode = {};
-        let autoSaveInterval;
-        let lastSavedCode = '';
+        let currentQuestion = null;
+        let timeLimit = 90 * 60; // 90 minutes in seconds
+        let timer;
 
         // Initialize CodeMirror editor
         document.addEventListener('DOMContentLoaded', function() {
-            editor = CodeMirror.fromTextArea(document.getElementById('codeEditor'), {
+            editor = CodeMirror.fromTextArea(document.getElementById('code-editor'), {
                 mode: 'python',
                 theme: 'monokai',
                 lineNumbers: true,
@@ -444,26 +404,21 @@
                 matchBrackets: true,
                 indentUnit: 4,
                 tabSize: 4,
-                lineWrapping: true,
-                viewportMargin: Infinity,
-                extraKeys: {
-                    "Ctrl-S": function(cm) { saveCode(); },
-                    "Ctrl-R": function(cm) { runCode(); },
-                    "Ctrl-Enter": function(cm) { submitCode(); },
-                    "Ctrl-F": function(cm) { formatCode(); },
-                    "Esc": function(cm) { toggleKeyboardShortcuts(); }
+                indentWithTabs: false,
+                extraKeys: {"Tab": "indentMore", "Shift-Tab": "indentLess"}
+            });
+
+            // Handle language change
+            document.getElementById('language-select').addEventListener('change', function(e) {
+                const language = e.target.value;
+                updateEditorMode(language);
+                if (currentQuestion && currentQuestion.starter_code && currentQuestion.starter_code[language]) {
+                    editor.setValue(currentQuestion.starter_code[language]);
                 }
             });
 
-            // Load first question
+            // Load initial question
             loadQuestion();
-
-            // Set up language change handler
-            document.getElementById('languageSelect').addEventListener('change', function(e) {
-                const language = e.target.value;
-                updateEditorMode(language);
-                resetCode();
-            });
 
             // Set up auto-save
             setupAutoSave();
@@ -516,7 +471,7 @@
         }
 
         function formatCode() {
-            const language = document.getElementById('languageSelect').value;
+            const language = document.getElementById('language-select').value;
             const code = editor.getValue();
             
             showLoading('Formatting code...');
@@ -550,14 +505,14 @@
         }
 
         function runCode() {
-            const language = document.getElementById('languageSelect').value;
+            const language = document.getElementById('language-select').value;
             const code = editor.getValue();
             
             showLoading('Running code...');
             
             // Disable buttons during execution
-            document.getElementById('runBtn').disabled = true;
-            document.getElementById('submitBtn').disabled = true;
+            document.querySelector('.run-button').disabled = true;
+            document.querySelector('.submit-button').disabled = true;
             
             fetch('/run-code', {
                 method: 'POST',
@@ -573,9 +528,43 @@
             .then(response => response.json())
             .then(data => {
                 if (data.success) {
-                    displayTestResults(data.results);
+                    const resultsDiv = document.getElementById('results');
+                    resultsDiv.innerHTML = '';
+                    
+                    let passedCount = 0;
+                    let totalCount = data.results.length;
+                    
+                    data.results.forEach((result, index) => {
+                        const resultElement = document.createElement('div');
+                        resultElement.className = `test-case ${result.passed ? 'success' : 'error'}`;
+                        
+                        let content = `<strong>Test Case ${index + 1}:</strong> `;
+                        if (result.passed) {
+                            content += `<span class="success">Passed</span><br>`;
+                            content += `Output: ${result.output}`;
+                            passedCount++;
+                        } else {
+                            content += `<span class="error">Failed</span><br>`;
+                            content += `Error: ${result.error}`;
+                        }
+                        
+                        resultElement.innerHTML = content;
+                        resultsDiv.appendChild(resultElement);
+                    });
+                    
+                    // Add summary
+                    const summaryElement = document.createElement('div');
+                    summaryElement.className = 'test-summary';
+                    summaryElement.innerHTML = `
+                        <div>Test Results: 
+                            <span class="passed">${passedCount} passed</span>, 
+                            <span class="failed">${totalCount - passedCount} failed</span>
+                        </div>
+                    `;
+                    resultsDiv.insertBefore(summaryElement, resultsDiv.firstChild);
+                    
                 } else {
-                    showMessage('Error running code: ' + data.error, 'error');
+                    showMessage(data.error || 'Failed to run code', 'error');
                 }
             })
             .catch(error => {
@@ -584,21 +573,21 @@
             })
             .finally(() => {
                 // Re-enable buttons
-                document.getElementById('runBtn').disabled = false;
-                document.getElementById('submitBtn').disabled = false;
+                document.querySelector('.run-button').disabled = false;
+                document.querySelector('.submit-button').disabled = false;
                 hideLoading();
             });
         }
 
         function submitCode() {
-            const language = document.getElementById('languageSelect').value;
+            const language = document.getElementById('language-select').value;
             const code = editor.getValue();
             
             showLoading('Submitting code...');
             
             // Disable buttons during submission
-            document.getElementById('runBtn').disabled = true;
-            document.getElementById('submitBtn').disabled = true;
+            document.querySelector('.run-button').disabled = true;
+            document.querySelector('.submit-button').disabled = true;
             
             fetch('/submit-coding', {
                 method: 'POST',
@@ -629,54 +618,19 @@
             })
             .finally(() => {
                 // Re-enable buttons
-                document.getElementById('runBtn').disabled = false;
-                document.getElementById('submitBtn').disabled = false;
+                document.querySelector('.run-button').disabled = false;
+                document.querySelector('.submit-button').disabled = false;
                 hideLoading();
             });
-        }
-
-        function displayTestResults(results) {
-            const testResultsDiv = document.getElementById('testResults');
-            const testSummary = document.getElementById('testSummary');
-            testResultsDiv.innerHTML = '';
-            
-            let passedCount = 0;
-            let failedCount = 0;
-            
-            results.forEach((result, index) => {
-                const testCase = document.createElement('div');
-                testCase.className = `test-case ${result.passed ? 'passed' : 'failed'}`;
-                
-                const header = document.createElement('div');
-                header.className = 'test-case-header';
-                header.textContent = `Test Case ${index + 1}: ${result.passed ? 'Passed' : 'Failed'}`;
-                
-                const content = document.createElement('div');
-                content.className = 'test-case-content';
-                if (result.passed) {
-                    content.textContent = `Output: ${result.output}`;
-                    passedCount++;
-                } else {
-                    content.textContent = `Error: ${result.error}`;
-                    failedCount++;
-                }
-                
-                testCase.appendChild(header);
-                testCase.appendChild(content);
-                testResultsDiv.appendChild(testCase);
-            });
-            
-            // Update summary
-            document.getElementById('passedTests').textContent = `${passedCount} passed`;
-            document.getElementById('failedTests').textContent = `${failedCount} failed`;
-            testSummary.style.display = 'flex';
         }
 
         function updateEditorMode(language) {
             const modeMap = {
                 'python': 'python',
                 'javascript': 'javascript',
-                'java': 'text/x-java'
+                'java': 'text/x-java',
+                'cpp': 'text/x-c++src',
+                'c': 'text/x-csrc'
             };
             editor.setOption('mode', modeMap[language]);
         }
@@ -687,42 +641,53 @@
                 .then(data => {
                     if (data.success) {
                         currentQuestion = data.question;
-                        starterCode = data.question.starter_code;
+                        displayQuestion(currentQuestion);
                         
-                        // Update UI
-                        document.getElementById('problemTitle').textContent = data.question.title;
-                        document.getElementById('difficultyBadge').textContent = data.question.difficulty;
-                        document.getElementById('difficultyBadge').className = `difficulty-badge difficulty-${data.question.difficulty.toLowerCase()}`;
-                        
-                        // Update stats
-                        document.getElementById('acceptanceRate').textContent = `Acceptance Rate: ${Math.round(data.question.acceptance_rate)}%`;
-                        document.getElementById('submissions').textContent = `Total Submissions: ${data.question.total_submissions.toLocaleString()}`;
-                        
-                        // Render problem content with Markdown
-                        document.getElementById('problemContent').innerHTML = marked.parse(data.question.content);
-                        
-                        // Reset editor with starter code
-                        resetCode();
-                        
-                        // Clear test results
-                        document.getElementById('testResults').innerHTML = '';
-                        document.getElementById('testSummary').style.display = 'none';
-                        
-                        // Highlight code blocks
-                        Prism.highlightAll();
+                        // Set initial code
+                        const language = document.getElementById('language-select').value;
+                        if (currentQuestion.starter_code && currentQuestion.starter_code[language]) {
+                            editor.setValue(currentQuestion.starter_code[language]);
+                        }
+                    } else if (data.completed) {
+                        window.location.href = '/hr';  // Redirect to next round
                     } else {
-                        alert('Failed to load question: ' + data.error);
+                        document.getElementById('results').innerHTML = 
+                            `<div class="error">Error loading question: ${data.error}</div>`;
                     }
                 })
                 .catch(error => {
-                    console.error('Error:', error);
-                    alert('Failed to load question');
+                    document.getElementById('results').innerHTML = 
+                        `<div class="error">Error: ${error.message}</div>`;
                 });
         }
 
-        function resetCode() {
-            const language = document.getElementById('languageSelect').value;
-            editor.setValue(starterCode[language] || '');
+        function displayQuestion(question) {
+            document.getElementById('question-title').textContent = question.title;
+            document.getElementById('question-difficulty').textContent = 
+                `Difficulty: ${question.difficulty}`;
+            document.getElementById('question-content').innerHTML = question.content;
+        }
+
+        function startTimer() {
+            let timeRemaining = timeLimit;
+            updateTimerDisplay(timeRemaining);
+            
+            timer = setInterval(() => {
+                timeRemaining--;
+                updateTimerDisplay(timeRemaining);
+                
+                if (timeRemaining <= 0) {
+                    clearInterval(timer);
+                    submitCode();
+                }
+            }, 1000);
+        }
+
+        function updateTimerDisplay(seconds) {
+            const minutes = Math.floor(seconds / 60);
+            const remainingSeconds = seconds % 60;
+            document.querySelector('#timer span').textContent = 
+                `${String(minutes).padStart(2, '0')}:${String(remainingSeconds).padStart(2, '0')}`;
         }
     </script>
 </body>

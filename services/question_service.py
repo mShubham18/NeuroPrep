@@ -4,8 +4,16 @@ import os
 from dotenv import load_dotenv
 import time
 from functools import lru_cache
+import re
+import logging
+import random
+from typing import List, Dict, Any
 
 load_dotenv()
+
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 class QuestionService:
     def __init__(self):
@@ -16,6 +24,7 @@ class QuestionService:
         self.last_request_time = 0
         self.min_request_interval = 1  # 1 second between requests
         self.max_retries = 3  # Maximum number of retries for API calls
+        self.used_question_ids = set()  # Track used questions to avoid duplicates
         
     def _rate_limit(self):
         """Implement rate limiting"""
@@ -34,175 +43,344 @@ class QuestionService:
                 response.raise_for_status()
                 return response
             except requests.exceptions.RequestException as e:
+                logger.error(f"Request failed (attempt {attempt + 1}/{self.max_retries}): {str(e)}")
                 if attempt == self.max_retries - 1:
-                    print(f"Failed after {self.max_retries} attempts: {str(e)}")
+                    logger.error(f"Failed after {self.max_retries} attempts")
                     return None
                 time.sleep(1)  # Wait before retrying
         return None
 
-    def get_questions_by_difficulty(self, skills, experience_level):
+    def get_questions_by_difficulty(self, skills: List[str], experience_level: str) -> List[Dict[str, Any]]:
         """
-        Get questions from LeetCode based on skills and experience level
-        Args:
-            skills (list): List of programming skills
-            experience_level (str): Experience level (beginner/intermediate/advanced)
-        Returns:
-            list: List of questions with different difficulty levels
+        Get coding questions from LeetCode with proper randomization and difficulty distribution
         """
         try:
-            # Get default questions first
-            default_questions = self._get_default_questions()
-            
-            # Clean up and validate inputs
-            if isinstance(skills, str):
-                skills = [s.strip() for s in skills.split(',') if s.strip()]
-            elif not skills:
-                skills = []
-                
-            experience_level = experience_level.lower() if experience_level else 'beginner'
-            
-            # Map experience level to difficulty
-            difficulty_map = {
-                'beginner': ['Easy'],
-                'intermediate': ['Easy', 'Medium'],
-                'advanced': ['Medium', 'Hard']
+            # Map experience level to difficulty distribution
+            difficulty_distribution = {
+                'beginner': {'Easy': 0.7, 'Medium': 0.3, 'Hard': 0.0},
+                'intermediate': {'Easy': 0.3, 'Medium': 0.5, 'Hard': 0.2},
+                'advanced': {'Easy': 0.1, 'Medium': 0.4, 'Hard': 0.5}
             }
             
-            # Get all problems from LeetCode
-            response = self._make_request('GET', self.api_url)
-            if not response:
-                print("Failed to fetch problems from LeetCode API")
-                return default_questions
+            # Get distribution for the experience level
+            distribution = difficulty_distribution.get(experience_level.lower(), difficulty_distribution['beginner'])
+            
+            # Fetch all problems
+            response = requests.get(self.api_url)
+            if response.status_code != 200:
+                logger.error("Failed to fetch problems from LeetCode API")
+                return self._get_default_questions()
                 
             problems = response.json().get('stat_status_pairs', [])
-            if not problems:
-                print("No problems returned from LeetCode API")
-                return default_questions
+            logger.info(f"Found {len(problems)} total problems")
             
-            # Filter problems based on difficulty and skills
-            filtered_problems = []
+            # Filter and categorize problems
+            categorized_problems = {
+                'Easy': [],
+                'Medium': [],
+                'Hard': []
+            }
+            
             for problem in problems:
+                stat = problem.get('stat', {})
+                question_id = stat.get('question_id')
+                title = stat.get('question__title')
+                difficulty = self._get_difficulty(problem.get('difficulty', {}).get('level', 1))
+                
+                if (question_id and title and 
+                    question_id not in self.used_question_ids and
+                    difficulty in categorized_problems):
+                    categorized_problems[difficulty].append({
+                        'id': question_id,
+                        'title': title,
+                        'difficulty': difficulty
+                    })
+            
+            # Select questions based on distribution
+            selected_questions = []
+            total_questions = 5  # Number of questions to fetch
+            
+            for difficulty, percentage in distribution.items():
+                num_questions = int(total_questions * percentage)
+                if num_questions > 0 and categorized_problems[difficulty]:
+                    # Randomly select questions
+                    selected = random.sample(categorized_problems[difficulty], 
+                                          min(num_questions, len(categorized_problems[difficulty])))
+                    selected_questions.extend(selected)
+            
+            # Fetch detailed data for selected questions
+            final_questions = []
+            for question in selected_questions:
                 try:
-                    # Get problem details
-                    stat = problem.get('stat', {})
-                    difficulty = problem.get('difficulty', {}).get('level', 1)
-                    difficulty_name = ['Easy', 'Medium', 'Hard'][difficulty - 1]
-                    
-                    # Check if difficulty matches experience level
-                    if difficulty_name in difficulty_map.get(experience_level, ['Easy']):
-                        # Get problem title and URL
-                        title = stat.get('question__title')
-                        slug = stat.get('question__title_slug')
+                    # Get problem data
+                    problem_data = self._get_problem_data(question['id'])
+                    if not problem_data:
+                        continue
                         
-                        if title and slug:
-                            url = self.question_url.format(slug)
-                            
-                            # Get problem content and metadata
-                            problem_data = self._get_problem_data(slug)
-                            
-                            if problem_data:
-                                filtered_problems.append({
-                                    'id': stat.get('question_id', len(filtered_problems) + 1),
-                                    'title': title,
-                                    'difficulty': difficulty_name,
-                                    'url': url,
-                                    'content': problem_data['content'],
-                                    'test_cases': problem_data['test_cases'],
-                                    'starter_code': problem_data['starter_code'],
-                                    'acceptance_rate': problem.get('ac_rate', 0),
-                                    'total_submissions': stat.get('total_submitted', 0)
-                                })
-                                
-                                # Break if we have enough questions
-                                if len(filtered_problems) >= 3:
-                                    break
+                    # Extract test cases and starter code
+                    test_cases = problem_data.get('test_cases', [])
+                    starter_code = problem_data.get('starter_code', {})
+                    
+                    if not test_cases:
+                        logger.warning(f"No test cases found for {question['title']}")
+                        continue
+                        
+                    if not starter_code:
+                        logger.warning(f"No starter code found for {question['title']}")
+                        continue
+                    
+                    # Add to final questions
+                    question.update({
+                        'content': problem_data.get('content', ''),
+                        'test_cases': test_cases,
+                        'starter_code': starter_code
+                    })
+                    final_questions.append(question)
+                    self.used_question_ids.add(question['id'])
+                    
+                    logger.info(f"Added problem: {question['title']} ({question['difficulty']})")
+                    
                 except Exception as e:
-                    print(f"Error processing problem: {str(e)}")
+                    logger.error(f"Error processing question {question['title']}: {str(e)}")
                     continue
             
-            # Return filtered problems if we have any, otherwise return default questions
-            return filtered_problems if filtered_problems else default_questions
+            if not final_questions:
+                logger.warning("No questions were successfully processed, using default questions")
+                return self._get_default_questions()
                 
+            logger.info(f"Successfully processed {len(final_questions)} problems")
+            return final_questions
+            
         except Exception as e:
-            print(f"Error in get_questions_by_difficulty: {str(e)}")
+            logger.error(f"Error fetching questions: {str(e)}")
             return self._get_default_questions()
     
-    def _get_problem_data(self, slug):
-        """Get problem content, test cases, and starter code using GraphQL API"""
+    def _get_difficulty(self, level: int) -> str:
+        """Convert numeric difficulty to string"""
+        difficulties = {1: 'Easy', 2: 'Medium', 3: 'Hard'}
+        return difficulties.get(level, 'Easy')
+    
+    def _get_problem_data(self, question_id: int) -> Dict[str, Any]:
+        """Fetch detailed problem data from LeetCode GraphQL API"""
         try:
             query = """
-            query getQuestionData($titleSlug: String!) {
+            query getQuestionDetail($titleSlug: String!) {
                 question(titleSlug: $titleSlug) {
+                    questionId
+                    title
                     content
-                    sampleTestCase
-                    exampleTestcases
+                    difficulty
                     codeSnippets {
                         langSlug
                         code
                     }
+                    exampleTestcases
+                    sampleTestCase
+                    metaData
+                    hints
                 }
             }
             """
             
-            response = self._make_request(
-                'POST',
-                self.graphql_url,
-                json={
-                    'query': query,
-                    'variables': {'titleSlug': slug}
-                },
-                headers={'Content-Type': 'application/json'}
-            )
-            
-            if not response:
-                print(f"Failed to fetch data for question {slug}")
+            # Get title slug from question ID
+            response = requests.get(self.api_url)
+            if response.status_code != 200:
+                logger.error("Failed to fetch problems list")
                 return None
-            
-            data = response.json().get('data', {}).get('question', {})
-            if not data:
-                print(f"No data returned for question {slug}")
-                return None
-            
-            # Log the response for debugging
-            print(f"API response for {slug}: {response.json()}")
-            
-            # Get starter code for supported languages
-            starter_code = {}
-            for snippet in data.get('codeSnippets', []):
-                if snippet.get('langSlug') in ['python3', 'javascript', 'java']:
-                    lang_map = {'python3': 'python', 'javascript': 'javascript', 'java': 'java'}
-                    starter_code[lang_map[snippet['langSlug']]] = snippet.get('code', '')
-            
-            # Parse test cases
-            test_cases = []
-            example_tests = data.get('exampleTestcases', '')
-            if example_tests:
-                test_cases = [case.strip() for case in example_tests.split('\n') if case.strip()]
-            
-            # If no test cases found, try sample test case
-            if not test_cases and data.get('sampleTestCase'):
-                test_cases = [data['sampleTestCase'].strip()]
-            
-            # Ensure we have at least one test case
-            if not test_cases:
-                test_cases = ['[1,2,3]\n5']  # Default test case
-            
-            # Ensure starter_code and test_cases are not None
-            starter_code = starter_code or {}
-            test_cases = test_cases or ['[1,2,3]\n5']  # Default test case if none found
-            
-            return {
-                'content': data.get('content', 'Problem content not available'),
-                'test_cases': test_cases,
-                'starter_code': starter_code
-            }
                 
-        except Exception as e:
-            print(f"Error fetching problem data for {slug}: {str(e)}")
+            problems = response.json().get('stat_status_pairs', [])
+            for problem in problems:
+                if problem.get('stat', {}).get('question_id') == question_id:
+                    title_slug = problem.get('stat', {}).get('question__title_slug')
+                    if not title_slug:
+                        logger.error(f"No title slug found for question {question_id}")
+                        continue
+                        
+                    # Make GraphQL request
+                    variables = {'titleSlug': title_slug}
+                    headers = {
+                        'Content-Type': 'application/json',
+                        'Referer': f'https://leetcode.com/problems/{title_slug}'
+                    }
+                    
+                    response = requests.post(
+                        self.graphql_url,
+                        json={'query': query, 'variables': variables},
+                        headers=headers
+                    )
+                    
+                    if response.status_code != 200:
+                        logger.error(f"Failed to fetch question data for {title_slug}")
+                        return None
+                        
+                    data = response.json()
+                    question_data = data.get('data', {}).get('question', {})
+                    
+                    if not question_data:
+                        logger.error(f"Empty question data for {title_slug}")
+                        return None
+                        
+                    # Process content
+                    content = question_data.get('content', '')
+                    if not content:
+                        logger.error(f"No content found for {title_slug}")
+                        return None
+                        
+                    # Clean and format content
+                    content = self._clean_html_content(content)
+                    
+                    # Process code snippets
+                    code_snippets = question_data.get('codeSnippets', [])
+                    starter_code = {}
+                    for snippet in code_snippets:
+                        lang = snippet.get('langSlug', '').lower()
+                        code = snippet.get('code', '')
+                        if lang and code:
+                            # Map LeetCode language slugs to our supported languages
+                            lang_map = {
+                                'python3': 'python',
+                                'python': 'python',
+                                'javascript': 'javascript',
+                                'java': 'java',
+                                'cpp': 'cpp',
+                                'c': 'c'
+                            }
+                            if lang in lang_map:
+                                starter_code[lang_map[lang]] = code.strip()
+                    
+                    # Process test cases
+                    test_cases = []
+                    example_test_cases = question_data.get('exampleTestcases', '')
+                    sample_test_case = question_data.get('sampleTestCase', '')
+                    
+                    # Try to get test cases from multiple sources
+                    if example_test_cases:
+                        test_cases.extend(example_test_cases.strip().split('\n'))
+                    if sample_test_case and sample_test_case not in test_cases:
+                        test_cases.append(sample_test_case.strip())
+                    
+                    # Extract test cases from content if needed
+                    if not test_cases:
+                        test_cases = self._extract_test_cases(content)
+                    
+                    # Get metadata
+                    try:
+                        metadata = json.loads(question_data.get('metaData', '{}'))
+                    except:
+                        metadata = {}
+                    
+                    return {
+                        'id': question_id,
+                        'title': question_data.get('title', ''),
+                        'content': content,
+                        'difficulty': question_data.get('difficulty', 'Easy'),
+                        'starter_code': starter_code,
+                        'test_cases': test_cases,
+                        'hints': question_data.get('hints', []),
+                        'metadata': metadata
+                    }
+            
+            logger.error(f"Question {question_id} not found in problems list")
             return None
-
+            
+        except Exception as e:
+            logger.error(f"Error fetching problem data: {str(e)}")
+            return None
+    
+    def _clean_html_content(self, content: str) -> str:
+        """Clean and format HTML content from LeetCode"""
+        try:
+            # Remove unnecessary HTML tags but keep formatting
+            content = re.sub(r'<pre>', '', content)
+            content = re.sub(r'</pre>', '', content)
+            content = re.sub(r'<strong>', '**', content)
+            content = re.sub(r'</strong>', '**', content)
+            content = re.sub(r'<em>', '*', content)
+            content = re.sub(r'</em>', '*', content)
+            content = re.sub(r'<code>', '`', content)
+            content = re.sub(r'</code>', '`', content)
+            content = re.sub(r'<sup>', '^', content)
+            content = re.sub(r'</sup>', '', content)
+            content = re.sub(r'<sub>', '_', content)
+            content = re.sub(r'</sub>', '', content)
+            content = re.sub(r'<[^>]+>', '', content)  # Remove any other HTML tags
+            
+            # Fix common formatting issues
+            content = content.replace('&nbsp;', ' ')
+            content = content.replace('&lt;', '<')
+            content = content.replace('&gt;', '>')
+            content = content.replace('&quot;', '"')
+            content = content.replace('&apos;', "'")
+            content = content.replace('&amp;', '&')
+            
+            # Normalize whitespace
+            content = re.sub(r'\s+', ' ', content)
+            content = content.strip()
+            
+            return content
+            
+        except Exception as e:
+            logger.error(f"Error cleaning content: {str(e)}")
+            return content  # Return original content if cleaning fails
+    
+    def _extract_test_cases(self, content: str) -> List[str]:
+        """Extract test cases from problem content"""
+        try:
+            if not content:
+                logger.warning("Empty content provided for test case extraction")
+                return ["[1, 2, 3]\n6"]
+                
+            test_cases = []
+            
+            # Pattern for example input/output pairs
+            patterns = [
+                r'Example \d+:?\s*Input:?\s*(.*?)\s*Output:?\s*(.*?)(?=Example|$)',
+                r'Input:?\s*(.*?)\s*Output:?\s*(.*?)(?=Input:|$)',
+                r'Sample Input:?\s*(.*?)\s*Sample Output:?\s*(.*?)(?=\n\n|$)',
+                r'Input =\s*(.*?)\s*Output =\s*(.*?)(?=\n\n|$)',
+                r'Input:\s*`(.*?)`\s*Output:\s*`(.*?)`'
+            ]
+            
+            for pattern in patterns:
+                matches = re.finditer(pattern, content, re.DOTALL)
+                for match in matches:
+                    input_data = match.group(1).strip()
+                    output_data = match.group(2).strip()
+                    if input_data and output_data:
+                        # Clean the test case data
+                        input_data = re.sub(r'`|\[|\]|\(|\)|\{|\}', '', input_data)
+                        output_data = re.sub(r'`|\[|\]|\(|\)|\{|\}', '', output_data)
+                        test_case = f"{input_data}\n{output_data}"
+                        if test_case not in test_cases:
+                            test_cases.append(test_case)
+            
+            if not test_cases:
+                logger.warning("No test cases found in content")
+                return ["[1, 2, 3]\n6"]
+                
+            return test_cases
+            
+        except Exception as e:
+            logger.error(f"Error extracting test cases: {str(e)}")
+            return ["[1, 2, 3]\n6"]
+    
+    def _extract_starter_code(self, code_definitions: List[Dict[str, Any]]) -> Dict[str, str]:
+        """Extract starter code for different languages"""
+        try:
+            starter_code = {}
+            for definition in code_definitions:
+                language = definition.get('value', '').lower()
+                code = definition.get('defaultCode', '')
+                if language and code:
+                    starter_code[language] = code
+            return starter_code
+        except Exception as e:
+            logger.error(f"Error extracting starter code: {str(e)}")
+            return {}
+    
     def _get_default_questions(self):
         """Return default questions in case of API failure"""
+        logger.info("Using default questions")
         return [
             {
                 'id': 1,

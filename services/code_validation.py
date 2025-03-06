@@ -126,8 +126,9 @@ class CodeValidationService:
             # Prepare test code with enhanced error handling
             test_code = f"""
 import sys
+import json
 import traceback
-from typing import List, Any
+import ast
 
 {user_code}
 
@@ -138,35 +139,56 @@ def run_tests():
     for i, test_case in enumerate(test_cases, 1):
         try:
             # Parse input
-            inputs = test_case.split('\\n')[0]
-            inputs = ast.literal_eval(inputs)
+            try:
+                input_data = json.loads(test_case)
+                if isinstance(input_data, (list, tuple)):
+                    args = input_data
+                else:
+                    args = [input_data]
+            except json.JSONDecodeError:
+                # If not JSON, try ast.literal_eval
+                try:
+                    input_data = ast.literal_eval(test_case)
+                    if isinstance(input_data, (list, tuple)):
+                        args = input_data
+                    else:
+                        args = [input_data]
+                except:
+                    # If all else fails, use as string
+                    args = [test_case.strip('"\'')]
             
-            # Convert inputs to proper format
-            if isinstance(inputs, list):
-                result = {func_name}(inputs)
-            elif isinstance(inputs, tuple):
-                result = {func_name}(*inputs)
-            else:
-                result = {func_name}(inputs)
-            
-            # Format result for comparison
-            result_str = str(result)
-            print(f"Test case {{i}}: {{result_str}}")
-            results.append({{'passed': True, 'output': result_str}})
-            
+            # Run test
+            try:
+                result = {func_name}(*args)
+                results.append({{'passed': True, 'output': str(result)}})
+            except TypeError as e:
+                # If too many arguments, try with the first argument only
+                if "takes" in str(e) and "positional argument" in str(e):
+                    try:
+                        result = {func_name}(args[0])
+                        results.append({{'passed': True, 'output': str(result)}})
+                    except Exception as e:
+                        error_msg = f"Runtime Error: {{str(e)}}\\n{{traceback.format_exc()}}"
+                        results.append({{'passed': False, 'error': error_msg}})
+                else:
+                    error_msg = f"Runtime Error: {{str(e)}}\\n{{traceback.format_exc()}}"
+                    results.append({{'passed': False, 'error': error_msg}})
+            except Exception as e:
+                error_msg = f"Runtime Error: {{str(e)}}\\n{{traceback.format_exc()}}"
+                results.append({{'passed': False, 'error': error_msg}})
+                
         except Exception as e:
-            error_msg = f"{{str(e)}}\\n{{''.join(traceback.format_tb(e.__traceback__))}}"
-            print(f"Error in test case {{i}}: {{error_msg}}", file=sys.stderr)
+            error_msg = f"Test Case Error: {{str(e)}}\\n{{traceback.format_exc()}}"
             results.append({{'passed': False, 'error': error_msg}})
     
-    print("\\nTest Results:")
+    # Print results as JSON
     print(json.dumps(results))
 
 if __name__ == '__main__':
     try:
         run_tests()
     except Exception as e:
-        print(f"Fatal error: {{str(e)}}", file=sys.stderr)
+        print(json.dumps([{{'passed': False, 'error': f"Fatal error: {{str(e)}}\\n{{traceback.format_exc()}}"}}]))
         sys.exit(1)
 """
             return test_code
@@ -308,7 +330,6 @@ public class Main {{
     def _run_code(self, file_path: str, language: str) -> Dict[str, Any]:
         """Run code with resource limits and timeout"""
         try:
-            # Set up process with resource limits
             process = None
             try:
                 if language == 'python':
@@ -321,16 +342,15 @@ public class Main {{
                     subprocess.run(['javac', '-cp', '.:gson.jar', file_path], check=True)
                     cmd = ['java', '-cp', '.:gson.jar', class_name]
 
-                # Create process with resource limits
+                # Create process with timeout
                 process = subprocess.Popen(
                     cmd,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
                     text=True,
-                    preexec_fn=lambda: self._set_resource_limits()
+                    creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
                 )
 
-                # Monitor process
                 try:
                     stdout, stderr = process.communicate(timeout=self.test_timeout)
                 except subprocess.TimeoutExpired:
@@ -362,16 +382,34 @@ public class Main {{
                 # Parse output
                 if process.returncode == 0:
                     output_lines = stdout.strip().split('\n')
-                    results_line = next(line for line in reversed(output_lines) if line.startswith('['))
-                    test_results = json.loads(results_line)
-                    return {
-                        'success': True,
-                        'results': test_results
-                    }
+                    try:
+                        # Find the last line that looks like a JSON array
+                        results_line = None
+                        for line in reversed(output_lines):
+                            if line.strip().startswith('[') and line.strip().endswith(']'):
+                                results_line = line
+                                break
+                        
+                        if results_line:
+                            test_results = json.loads(results_line)
+                            return {
+                                'success': True,
+                                'results': test_results
+                            }
+                        else:
+                            return {
+                                'success': False,
+                                'error': 'No test results found in output'
+                            }
+                    except json.JSONDecodeError:
+                        return {
+                            'success': False,
+                            'error': 'Failed to parse test results'
+                        }
                 else:
                     return {
                         'success': False,
-                        'error': stderr
+                        'error': stderr or 'Code execution failed'
                     }
 
             finally:
@@ -406,4 +444,142 @@ public class Main {{
             'javascript': '.js',
             'java': '.java'
         }
-        return extensions.get(language, '.txt') 
+        return extensions.get(language, '.txt')
+
+    def _prepare_code_with_test(self, code: str, language: str, test_case: str, starter_code: str) -> str:
+        """Prepare code with test case for execution"""
+        try:
+            # Extract function name from starter code
+            if language == 'python':
+                match = re.search(r'def\s+(\w+)\s*\(', starter_code)
+                if match:
+                    function_name = match.group(1)
+                    test_code = f"""
+import json
+import sys
+import traceback
+
+{code}
+
+def run_test(test_input):
+    try:
+        # Parse input if it's a string representation of a data structure
+        try:
+            input_data = json.loads(test_input)
+        except json.JSONDecodeError:
+            # If not JSON, try to convert to int for sqrt problem
+            try:
+                input_data = int(test_input.strip('"\''))
+            except ValueError:
+                # If not an int, use as is (for strings, etc)
+                input_data = test_input.strip('"\'')
+        
+        # Call the function with parsed input
+        result = {function_name}(input_data)
+        
+        # Convert result to JSON if it's a complex type
+        if isinstance(result, (list, dict, bool)):
+            print(json.dumps(result))
+        else:
+            print(result)
+    except Exception as e:
+        print(f"Runtime error: {{str(e)}}")
+        traceback.print_exc()
+
+# Run the test
+test_input = '''{test_case}'''
+run_test(test_input)
+"""
+                    return test_code
+                else:
+                    raise ValueError("Could not extract function name from starter code")
+            elif language == 'javascript':
+                match = re.search(r'function\s+(\w+)\s*\(', starter_code)
+                if match:
+                    function_name = match.group(1)
+                    test_code = f"""
+{code}
+
+try {{
+    // Parse input
+    let input;
+    try {{
+        input = JSON.parse('{test_case}');
+    }} catch (e) {{
+        // If not JSON, try to convert to number for sqrt problem
+        input = Number('{test_case}'.trim());
+        if (isNaN(input)) {{
+            // If not a number, use as is
+            input = '{test_case}'.trim();
+        }}
+    }}
+    
+    // Run test
+    const result = {function_name}(input);
+    console.log(JSON.stringify(result));
+}} catch (e) {{
+    console.error(`Runtime error: ${{e.message}}\\n${{e.stack}}`);
+}}
+"""
+                    return test_code
+                else:
+                    raise ValueError("Could not extract function name from starter code")
+            elif language == 'java':
+                class_match = re.search(r'class\s+(\w+)\s*\{', code)
+                method_match = re.search(r'public\s+\w+\s+(\w+)\s*\(', starter_code)
+                if class_match and method_match:
+                    class_name = class_match.group(1)
+                    method_name = method_match.group(1)
+                    test_code = f"""
+{code}
+
+public class Main {{
+    public static void main(String[] args) {{
+        try {{
+            {class_name} solution = new {class_name}();
+            
+            // Parse input
+            String input = "{test_case}";
+            Object result;
+            try {{
+                // Try to parse as JSON
+                com.google.gson.JsonParser parser = new com.google.gson.JsonParser();
+                com.google.gson.JsonElement element = parser.parse(input);
+                if (element.isJsonPrimitive()) {{
+                    if (element.getAsJsonPrimitive().isNumber()) {{
+                        result = solution.{method_name}(element.getAsInt());
+                    }} else {{
+                        result = solution.{method_name}(input);
+                    }}
+                }} else {{
+                    result = solution.{method_name}(input);
+                }}
+            }} catch (Exception e) {{
+                // If not JSON, try to convert to int for sqrt problem
+                try {{
+                    int intInput = Integer.parseInt(input.trim());
+                    result = solution.{method_name}(intInput);
+                }} catch (NumberFormatException ne) {{
+                    // If not an int, use as is
+                    result = solution.{method_name}(input.trim());
+                }}
+            }}
+            
+            // Print result
+            System.out.println(new com.google.gson.Gson().toJson(result));
+            
+        }} catch (Exception e) {{
+            System.err.println("Runtime error: " + e.getMessage());
+            e.printStackTrace();
+        }}
+    }}
+}}
+"""
+                    return test_code
+                else:
+                    raise ValueError("Could not extract class/method name from code")
+            else:
+                raise ValueError(f"Language {language} is not supported")
+        except Exception as e:
+            self.logger.error(f"Error preparing code with test: {str(e)}")
+            raise 
